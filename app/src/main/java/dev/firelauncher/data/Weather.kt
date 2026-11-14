@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.roundToInt
 
-data class WeatherNow(val temperature: Int, val symbol: String, val label: String)
+data class WeatherNow(val temperature: Int, val symbol: String, val label: String, val labelEn: String)
 
 data class Place(val name: String, val lat: Double, val lon: Double)
 
@@ -24,8 +24,8 @@ object Weather {
                     "&current=temperature_2m,weather_code,is_day&timezone=auto"
             )
             val cur = JSONObject(json).getJSONObject("current")
-            val (symbol, label) = describe(cur.getInt("weather_code"), cur.optInt("is_day", 1) == 1)
-            WeatherNow(cur.getDouble("temperature_2m").roundToInt(), symbol, label)
+            val (symbol, labels) = describe(cur.getInt("weather_code"), cur.optInt("is_day", 1) == 1)
+            WeatherNow(cur.getDouble("temperature_2m").roundToInt(), symbol, labels.first, labels.second)
         }.onFailure { Log.w(TAG, "meteo non disponibile", it) }.getOrNull()
     }
 
@@ -40,19 +40,19 @@ object Weather {
         }.onFailure { Log.w(TAG, "città non trovata", it) }.getOrNull()
     }
 
-    /** Codici WMO -> simbolo e descrizione breve. */
-    private fun describe(code: Int, day: Boolean): Pair<String, String> = when (code) {
-        0 -> (if (day) "☀" else "☾") to "Sereno"
-        1 -> (if (day) "🌤" else "☾") to "Poco nuvoloso"
-        2 -> "⛅" to "Nuvoloso"
-        3 -> "☁" to "Coperto"
-        45, 48 -> "🌫" to "Nebbia"
-        in 51..57 -> "🌦" to "Pioviggine"
-        in 61..67 -> "🌧" to "Pioggia"
-        in 71..77, 85, 86 -> "❄" to "Neve"
-        in 80..82 -> "🌧" to "Rovesci"
-        in 95..99 -> "⛈" to "Temporale"
-        else -> "☁" to ""
+    /** Codici WMO -> simbolo e descrizione breve (italiano, inglese). */
+    private fun describe(code: Int, day: Boolean): Pair<String, Pair<String, String>> = when (code) {
+        0 -> (if (day) "☀" else "☾") to ("Sereno" to "Clear")
+        1 -> (if (day) "🌤" else "☾") to ("Poco nuvoloso" to "Mostly clear")
+        2 -> "⛅" to ("Nuvoloso" to "Partly cloudy")
+        3 -> "☁" to ("Coperto" to "Overcast")
+        45, 48 -> "🌫" to ("Nebbia" to "Fog")
+        in 51..57 -> "🌦" to ("Pioviggine" to "Drizzle")
+        in 61..67 -> "🌧" to ("Pioggia" to "Rain")
+        in 71..77, 85, 86 -> "❄" to ("Neve" to "Snow")
+        in 80..82 -> "🌧" to ("Rovesci" to "Showers")
+        in 95..99 -> "⛈" to ("Temporale" to "Thunderstorm")
+        else -> "☁" to ("" to "")
     }
 
     private fun get(url: String): String {

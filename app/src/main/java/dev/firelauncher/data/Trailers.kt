@@ -190,8 +190,11 @@ class TrailerRepository(context: Context) {
         private const val TAG = "Trailers"
         private const val REFRESH_EVERY_MS = 30 * 60 * 1000L
 
-        fun isLiked(t: Trailer, prefs: Map<Int, Pref>): Boolean =
-            prefs[t.id]?.let { it == Pref.LIKE } ?: t.likedOnServer
+        /**
+         * Le preferenze dell'app (sincronizzate col NAS) sono l'unica fonte: niente ripiego sul flag
+         * del manifest, che può essere vecchio e farebbe ricomparire un cuore appena tolto.
+         */
+        fun isLiked(t: Trailer, prefs: Map<Int, Pref>): Boolean = prefs[t.id] == Pref.LIKE
 
         /**
          * Novità: intervallo di mesi e numero scelti nelle impostazioni, senza gli scartati.
@@ -202,11 +205,18 @@ class TrailerRepository(context: Context) {
             if (watchlist) return visible.filter { isLiked(it, prefs) }
             val cal = Calendar.getInstance()
             val nowIndex = cal.get(Calendar.YEAR) * 12 + cal.get(Calendar.MONTH)
-            return visible.filter { t ->
+            val inRange = visible.filter { t ->
                 val rel = t.releaseMonthIndex ?: return@filter false
                 val ago = nowIndex - rel
                 ago in s.monthsTo..s.monthsFrom
-            }.take(s.trailerCount)
+            }
+            val byLanguage = when (s.trailerLanguage) {
+                TrailerLanguage.ITALIAN_ONLY -> inRange.filter { it.language == "it" }
+                // Ordinamento stabile: prima gli italiani, ognuno nel suo ordine di popolarità.
+                TrailerLanguage.ITALIAN_FIRST -> inRange.sortedBy { if (it.language == "it") 0 else 1 }
+                TrailerLanguage.ANY -> inRange
+            }
+            return byLanguage.take(s.trailerCount)
         }
     }
 }

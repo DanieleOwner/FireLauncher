@@ -32,8 +32,8 @@ fun AllAppsScreen(
     apps: List<AppEntry>,
     onLaunch: (AppEntry) -> Unit,
     onBack: () -> Unit,
-    title: String = "Tutte le app",
-    subtitle: String = "${apps.size} app installate",
+    title: String = tr("Tutte le app", "All apps"),
+    subtitle: String = tr("${apps.size} app installate", "${apps.size} installed apps"),
 ) {
     BackHandler(onBack = onBack)
     val first = remember { FocusRequester() }

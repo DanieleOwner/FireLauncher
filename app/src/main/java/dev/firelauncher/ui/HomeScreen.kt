@@ -172,18 +172,22 @@ fun HomeScreen(
         }
     }
 
+    val msgRemoved = tr("Tolto dalla watchlist", "Removed from watchlist")
+    val msgAdded = tr("♥ Aggiunto alla watchlist", "♥ Added to watchlist")
+    val msgDiscarded = tr("non lo vedrai più", "you won't see it again")
+
     fun like(t: Trailer) {
         val liked = TrailerRepository.isLiked(t, prefs)
         if (watchlist && liked) refocus = true
         onPref(t, if (liked) null else Pref.LIKE)
-        toast = if (liked) "Tolto dalla watchlist" else "♥ Aggiunto alla watchlist"
+        toast = if (liked) msgRemoved else msgAdded
     }
 
     fun nope(t: Trailer) {
         refocus = true
         player.stop()
         onPref(t, Pref.NOPE)
-        toast = "✕ ${t.title}: non lo vedrai più"
+        toast = "✕ ${t.title}: $msgDiscarded"
     }
 
     Box(
@@ -193,8 +197,8 @@ fun HomeScreen(
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
-                    Key.MediaFastForward -> { current?.let(::like); current != null }
-                    Key.MediaRewind -> { current?.let(::nope); current != null }
+                    // Avanti e indietro veloce: entrambi mettono (o tolgono) il cuore.
+                    Key.MediaFastForward, Key.MediaRewind -> { current?.let(::like); current != null }
                     Key.Menu -> { if (settings.trailersEnabled) onToggleWatchlist(); true }
                     else -> false
                 }
@@ -295,7 +299,7 @@ private fun TopBar(now: Long, weather: WeatherNow?, showClock: Boolean, toast: S
             Spacer(Modifier.width(6.dp))
             Text("${weather.temperature}°", color = Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width(6.dp))
-            Text(weather.label, color = Palette.TextMuted, fontSize = 13.sp)
+            Text(tr(weather.label, weather.labelEn), color = Palette.TextMuted, fontSize = 13.sp)
         }
         if (showClock) {
             if (weather != null) Spacer(Modifier.width(16.dp))
@@ -315,9 +319,12 @@ private fun HeroInfo(
     onStremio: () -> Unit,
 ) {
     Column(modifier) {
+        val released = monthYear(trailer.releaseDate, uiLocale())
+        val langNote = if (trailer.language.isNotBlank() && trailer.language != "it")
+            " · " + tr("trailer in ", "trailer in ") + java.util.Locale(trailer.language).getDisplayLanguage(uiLocale())
+        else ""
         Text(
-            "Trailer · uscito a ${monthYear(trailer.releaseDate)}" +
-                if (trailer.language.isNotBlank() && trailer.language != "it") " · in ${trailer.language}" else "",
+            tr("Trailer · uscito a $released", "Trailer · released $released") + langNote,
             color = Palette.TextMuted, fontSize = 12.sp,
         )
         Spacer(Modifier.height(4.dp))
@@ -339,13 +346,13 @@ private fun HeroInfo(
         )
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton("Guarda", Icons.Default.PlayArrow, filled = true, onClick = onPlay)
+            PillButton(tr("Guarda", "Play"), Icons.Default.PlayArrow, filled = true, onClick = onPlay)
             PillButton(
-                if (liked) "In watchlist" else "Watchlist",
+                if (liked) tr("In watchlist", "In watchlist") else "Watchlist",
                 if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 filled = false, onClick = onLike,
             )
-            PillButton("Scarta", Icons.Default.Close, filled = false, onClick = onNope)
+            PillButton(tr("Scarta", "Discard"), Icons.Default.Close, filled = false, onClick = onNope)
             PillButton("Stremio", Icons.Default.Search, filled = false, onClick = onStremio)
         }
     }
@@ -408,7 +415,7 @@ private fun SliderTabs(watchlist: Boolean, count: Int, watchlistFocus: FocusRequ
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Tab("Novità", null, selected = !watchlist, modifier = Modifier) { if (watchlist) onToggle() }
+        Tab(tr("Novità", "New"), null, selected = !watchlist, modifier = Modifier) { if (watchlist) onToggle() }
         Tab(
             if (count > 0) "Watchlist · $count" else "Watchlist", Icons.Default.Favorite,
             selected = watchlist, modifier = Modifier.focusRequester(watchlistFocus),
@@ -505,11 +512,15 @@ private fun TrailerThumb(trailer: Trailer, liked: Boolean, modifier: Modifier, o
 @Composable
 private fun EmptyWatchlist(modifier: Modifier) {
     Column(modifier.padding(top = 40.dp)) {
-        Text("La tua watchlist è vuota", color = Palette.Text, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+        Text(tr("La tua watchlist è vuota", "Your watchlist is empty"), color = Palette.Text, fontSize = 24.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Mentre guardi i trailer premi ⏩ sul telecomando (o il pulsante Watchlist) per metterli qui. " +
-                "I trailer in watchlist restano sul NAS finché non togli il cuore.",
+            tr(
+                "Mentre guardi i trailer premi il pulsante Watchlist (o ⏩ / ⏪ sul telecomando) per metterli qui. " +
+                    "I trailer in watchlist restano sul NAS finché non togli il cuore.",
+                "While browsing trailers, press the Watchlist button (or ⏩ / ⏪ on the remote) to add them here. " +
+                    "Watchlist trailers stay on the NAS until you remove the heart.",
+            ),
             color = Palette.TextSoft, fontSize = 13.sp, lineHeight = 19.sp,
         )
     }
@@ -519,14 +530,17 @@ private fun EmptyWatchlist(modifier: Modifier) {
 private fun EmptyHero(now: Long, settings: LauncherSettings, state: TrailerState, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.Center) {
         Text(timeText(now), color = Palette.Text, fontSize = 72.sp, fontWeight = FontWeight.Light)
-        Text(dateText(now), color = Palette.TextMuted, fontSize = 16.sp)
+        Text(dateText(now, uiLocale()), color = Palette.TextMuted, fontSize = 16.sp)
         if (settings.trailersEnabled) {
             Spacer(Modifier.height(14.dp))
             val msg = when {
-                state.loading -> "Carico i trailer dal NAS…"
-                state.error != null -> "Trailer non disponibili: ${state.error}"
-                state.items.isNotEmpty() -> "Nessun trailer nel periodo scelto: allarga l'intervallo nelle impostazioni"
-                else -> "Il NAS sta preparando i trailer, compariranno qui a breve"
+                state.loading -> tr("Carico i trailer dal NAS…", "Loading trailers from the NAS…")
+                state.error != null -> tr("Trailer non disponibili: NAS non raggiungibile", "Trailers unavailable: can't reach the NAS")
+                state.items.isNotEmpty() -> tr(
+                    "Nessun trailer con questi filtri: cambia periodo o lingua nelle impostazioni",
+                    "No trailers match these filters: change the period or language in settings",
+                )
+                else -> tr("Il NAS sta preparando i trailer, compariranno qui a breve", "The NAS is preparing trailers, they'll show up here soon")
             }
             Text(msg, color = Palette.TextMuted, fontSize = 13.sp)
         }
@@ -558,9 +572,9 @@ private fun AppsRow(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            LinkButton("Tutte le app", Icons.Default.List, onAllApps)
-            LinkButton("Scarica app", Icons.Default.ShoppingCart, onStore)
-            LinkButton("Impostazioni", Icons.Default.Settings, onSettings)
+            LinkButton(tr("Tutte le app", "All apps"), Icons.Default.List, onAllApps)
+            LinkButton(tr("Scarica app", "Get apps"), Icons.Default.ShoppingCart, onStore)
+            LinkButton(tr("Impostazioni", "Settings"), Icons.Default.Settings, onSettings)
         }
     }
 }

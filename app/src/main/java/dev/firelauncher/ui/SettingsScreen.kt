@@ -41,6 +41,8 @@ import dev.firelauncher.data.AppEntry
 import dev.firelauncher.data.LauncherSettings
 import dev.firelauncher.data.PlayMode
 import dev.firelauncher.data.SettingsStore
+import dev.firelauncher.data.TrailerLanguage
+import dev.firelauncher.data.UiLanguage
 import dev.firelauncher.data.TrailerState
 
 private class SettingRow(
@@ -74,99 +76,164 @@ fun SettingsScreen(
     var editingCity by remember { mutableStateOf(false) }
     BackHandler { if (editingCity) editingCity = false else onBack() }
     val s = settings
+    val on = tr("Attivo", "On")
+    val off = tr("Disattivo", "Off")
+    val appsSection = tr("App in home", "Home screen apps")
     val favoriteRows = s.favorites.mapIndexed { i, pkg ->
         val label = apps.find { it.pkg == pkg }?.label ?: pkg
         SettingRow(
             "${i + 1}. $label",
-            "Sinistra e destra spostano l'app nella fila della home. OK la toglie dalla home (resta installata).",
-            "‹ sposta ›",
+            tr(
+                "Sinistra e destra spostano l'app nella fila della home. OK la toglie dalla home (resta installata).",
+                "Left and right move the app along the home row. OK removes it from the home screen (it stays installed).",
+            ),
+            tr("‹ sposta ›", "‹ move ›"),
             onStep = { d -> onChange { it.copy(favorites = SettingsStore.move(it.favorites, pkg, d)) } },
             onClick = { onChange { it.copy(favorites = it.favorites - pkg) } },
-            section = if (i == 0) "App in home" else null,
+            section = if (i == 0) appsSection else null,
             key = "fav:$pkg",
         )
     } + SettingRow(
-        "Aggiungi app",
-        "Scegli un'app installata da mettere in fondo alla fila della home.",
+        tr("Aggiungi app", "Add app"),
+        tr("Scegli un'app installata da mettere in fondo alla fila della home.", "Pick an installed app to add at the end of the home row."),
         "+",
         onClick = onAddFavorite,
-        section = if (s.favorites.isEmpty()) "App in home" else null,
+        section = if (s.favorites.isEmpty()) appsSection else null,
+        key = "fav:add",
     )
+    val monthsAgo = tr("mesi fa", "months ago")
     val rows = listOf(
         SettingRow(
-            "Mostra trailer in home",
-            "Lo slider dei trailer sopra le app. Se lo disattivi, al suo posto c'è un orologio grande.",
-            if (s.trailersEnabled) "Attivo" else "Disattivo",
+            tr("Mostra trailer in home", "Show trailers on home"),
+            tr(
+                "Lo slider dei trailer sopra le app. Se lo disattivi, al suo posto c'è un orologio grande.",
+                "The trailer carousel above the apps. When off, a large clock takes its place.",
+            ),
+            if (s.trailersEnabled) on else off,
             onStep = { onChange { it.copy(trailersEnabled = !it.trailersEnabled) } },
             onClick = { onChange { it.copy(trailersEnabled = !it.trailersEnabled) } },
             section = "Trailer",
+            key = "trailers",
         ),
         SettingRow(
-            "Usciti da non più di",
-            "Il film più vecchio da mostrare. Usa sinistra e destra per cambiare.",
-            "${s.monthsFrom} mesi fa",
+            tr("Usciti da non più di", "Released at most"),
+            tr("Il film più vecchio da mostrare. Usa sinistra e destra per cambiare.", "The oldest movie to show. Use left and right to change it."),
+            "${s.monthsFrom} $monthsAgo",
             onStep = { d -> onChange { it.copy(monthsFrom = it.monthsFrom + d) } },
+            key = "from",
         ),
         SettingRow(
-            "Usciti da almeno",
-            "Il film più recente da mostrare. 0 vuol dire fino a oggi.",
-            if (s.monthsTo == 0) "oggi" else "${s.monthsTo} mesi fa",
+            tr("Usciti da almeno", "Released at least"),
+            tr("Il film più recente da mostrare. 0 vuol dire fino a oggi.", "The newest movie to show. 0 means up to today."),
+            if (s.monthsTo == 0) tr("oggi", "today") else "${s.monthsTo} $monthsAgo",
             onStep = { d -> onChange { it.copy(monthsTo = it.monthsTo + d) } },
+            key = "to",
         ),
         SettingRow(
-            "Trailer da mostrare",
-            "Quanti trailer mettere nello slider, dai più popolari. Oltre 100 c'è \"Tutti\": l'intero periodo scelto.",
-            if (s.trailerCount == LauncherSettings.ALL) "Tutti" else "${s.trailerCount}",
+            tr("Trailer da mostrare", "Trailers to show"),
+            tr(
+                "Quanti trailer mettere nello slider, dai più popolari. Oltre 100 c'è \"Tutti\": l'intero periodo scelto.",
+                "How many trailers in the carousel, most popular first. Past 100 there's \"All\": the whole chosen period.",
+            ),
+            if (s.trailerCount == LauncherSettings.ALL) tr("Tutti", "All") else "${s.trailerCount}",
             onStep = { d -> onChange { it.copy(trailerCount = SettingsStore.stepCount(it.trailerCount, d)) } },
+            key = "count",
         ),
         SettingRow(
-            "Riproduzione",
-            "Nella finestrina della home oppure direttamente a tutto schermo. Dalla finestrina, OK una seconda volta passa a tutto schermo.",
-            if (s.playMode == PlayMode.WINDOW) "Finestrina" else "Tutto schermo",
+            tr("Lingua dei trailer", "Trailer language"),
+            tr(
+                "Prima in italiano: i trailer italiani vengono per primi, poi gli altri. Solo in italiano: nasconde quelli in altre lingue. " +
+                    "Il NAS scarica sempre il trailer italiano quando esiste.",
+                "Italian first: Italian trailers come first, then the rest. Italian only: hides trailers in other languages. " +
+                    "The NAS always downloads the Italian trailer when one exists.",
+            ),
+            when (s.trailerLanguage) {
+                TrailerLanguage.ITALIAN_FIRST -> tr("Prima in italiano", "Italian first")
+                TrailerLanguage.ITALIAN_ONLY -> tr("Solo in italiano", "Italian only")
+                TrailerLanguage.ANY -> tr("Qualsiasi lingua", "Any language")
+            },
+            onStep = { d ->
+                onChange {
+                    val all = TrailerLanguage.entries
+                    it.copy(trailerLanguage = all[(all.indexOf(it.trailerLanguage) + d + all.size) % all.size])
+                }
+            },
+            key = "trailerLanguage",
+        ),
+        SettingRow(
+            tr("Riproduzione", "Playback"),
+            tr(
+                "Nella finestrina della home oppure direttamente a tutto schermo. Dalla finestrina, OK una seconda volta passa a tutto schermo.",
+                "In the home preview window or straight to full screen. From the preview window, OK again goes full screen.",
+            ),
+            if (s.playMode == PlayMode.WINDOW) tr("Finestrina", "Preview window") else tr("Tutto schermo", "Full screen"),
             onStep = { onChange { it.copy(playMode = if (it.playMode == PlayMode.WINDOW) PlayMode.FULLSCREEN else PlayMode.WINDOW) } },
             onClick = { onChange { it.copy(playMode = if (it.playMode == PlayMode.WINDOW) PlayMode.FULLSCREEN else PlayMode.WINDOW) } },
+            key = "playMode",
         ),
         SettingRow(
-            "Audio nella finestrina",
-            "A tutto schermo l'audio è sempre attivo.",
-            if (s.windowAudio) "Attivo" else "Muto",
+            tr("Audio nella finestrina", "Audio in preview window"),
+            tr("A tutto schermo l'audio è sempre attivo.", "In full screen, audio is always on."),
+            if (s.windowAudio) on else tr("Muto", "Muted"),
             onStep = { onChange { it.copy(windowAudio = !it.windowAudio) } },
             onClick = { onChange { it.copy(windowAudio = !it.windowAudio) } },
+            key = "audio",
         ),
         SettingRow(
-            "Aggiorna elenco trailer",
-            "Rilegge subito l'elenco dal NAS. Di solito lo fa da solo ogni mezz'ora.",
+            tr("Aggiorna elenco trailer", "Refresh trailer list"),
+            tr("Rilegge subito l'elenco dal NAS. Di solito lo fa da solo ogni mezz'ora.", "Reloads the list from the NAS now. It normally does this every half hour."),
             when {
-                trailerState.loading -> "Aggiorno…"
-                trailerState.error != null -> trailerState.error
-                else -> "$visibleTrailers su ${trailerState.items.size}"
+                trailerState.loading -> tr("Aggiorno…", "Refreshing…")
+                trailerState.error != null -> tr("NAS non raggiungibile", "NAS unreachable")
+                else -> tr("$visibleTrailers su ${trailerState.items.size}", "$visibleTrailers of ${trailerState.items.size}")
             },
             onClick = onRefreshTrailers,
+            key = "refresh",
         ),
     ) + favoriteRows + listOf(
         SettingRow(
-            "Città per il meteo",
-            "Premi OK e scrivi la tua città: il meteo compare in alto a destra nella home.",
-            cityStatus ?: s.weatherCity.ifBlank { "Scegli" },
+            tr("Lingua dell'interfaccia", "Interface language"),
+            tr(
+                "Lingua dei menu del launcher. Titoli e trame dei film restano in italiano (da TMDB).",
+                "Language of the launcher menus. Movie titles and plots stay in Italian (from TMDB).",
+            ),
+            if (s.uiLanguage == UiLanguage.IT) "Italiano" else "English",
+            onStep = { onChange { it.copy(uiLanguage = if (it.uiLanguage == UiLanguage.IT) UiLanguage.EN else UiLanguage.IT) } },
+            onClick = { onChange { it.copy(uiLanguage = if (it.uiLanguage == UiLanguage.IT) UiLanguage.EN else UiLanguage.IT) } },
+            section = tr("Sistema", "System"),
+            key = "uiLanguage",
+        ),
+        SettingRow(
+            tr("Città per il meteo", "Weather city"),
+            tr("Premi OK e scrivi la tua città: il meteo compare in alto a destra nella home.", "Press OK and type your city: the weather appears at the top right of the home screen."),
+            cityStatus ?: s.weatherCity.ifBlank { tr("Scegli", "Choose") },
             onClick = { editingCity = true },
-            section = "Sistema",
+            key = "city",
         ),
         SettingRow(
-            "Server NAS",
-            "Indirizzo del servizio trailer sul Synology.",
+            tr("Server NAS", "NAS server"),
+            tr("Indirizzo del servizio trailer sul Synology.", "Address of the trailer service on the NAS."),
             s.serverUrl.removePrefix("http://"),
+            key = "server",
         ),
         SettingRow(
-            "Tasto Home",
-            if (homeServiceEnabled) "Premendo Home compare subito una schermata FireLauncher; dopo circa 5 secondi (un limite di Fire OS) si apre il launcher."
-            else "Manca il permesso \"dati di utilizzo\": il tasto Home apre ancora la home Amazon. Vedi il README per i comandi ADB.",
-            if (homeServiceEnabled) "Attivo" else "Non attivo",
+            tr("Tasto Home", "Home button"),
+            if (homeServiceEnabled) tr(
+                "Premendo Home compare subito una schermata FireLauncher; dopo circa 5 secondi (un limite di Fire OS) si apre il launcher.",
+                "Pressing Home shows a FireLauncher screen right away; after about 5 seconds (a Fire OS limit) the launcher opens.",
+            ) else tr(
+                "Manca il permesso \"dati di utilizzo\": il tasto Home apre ancora la home Amazon. Vedi il README per i comandi ADB.",
+                "The \"usage access\" permission is missing: Home still opens the Amazon home. See the README for the ADB commands.",
+            ),
+            if (homeServiceEnabled) on else tr("Non attivo", "Not active"),
+            key = "home",
         ),
         SettingRow(
-            "Impostazioni Fire TV",
-            "Rete, display, audio, app e tutto il resto del sistema.",
-            "Apri",
+            tr("Impostazioni Fire TV", "Fire TV settings"),
+            tr("Rete, display, audio, app e tutto il resto del sistema.", "Network, display, sound, apps and the rest of the system."),
+            tr("Apri", "Open"),
             onClick = onOpenFireTvSettings,
+            key = "firetv",
         ),
     )
 
@@ -186,7 +253,7 @@ fun SettingsScreen(
         Column(
             Modifier.width(300.dp).fillMaxHeight().background(Palette.Bg).padding(horizontal = 32.dp, vertical = 40.dp)
         ) {
-            Text("Impostazioni", color = Palette.Text, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+            Text(tr("Impostazioni", "Settings"), color = Palette.Text, fontSize = 24.sp, fontWeight = FontWeight.Medium)
             Text("FireLauncher ${BuildConfig.VERSION_NAME}", color = Palette.TextMuted, fontSize = 12.sp)
             Spacer(Modifier.height(36.dp))
             val row = rows[focused.coerceIn(0, rows.lastIndex)]
@@ -195,7 +262,8 @@ fun SettingsScreen(
             Text(row.description, color = Palette.TextMuted, fontSize = 13.sp, lineHeight = 19.sp)
             Spacer(Modifier.weight(1f))
             trailerState.generatedAt?.let {
-                Text("Elenco del NAS generato il ${it.take(16).replace('T', ' ')}", color = Palette.Accent, fontSize = 11.sp)
+                val at = it.take(16).replace('T', ' ')
+                Text(tr("Elenco del NAS generato il $at", "NAS list generated on $at"), color = Palette.Accent, fontSize = 11.sp)
             }
         }
         LazyColumn(
@@ -235,9 +303,9 @@ private fun CityEditor(initial: String, onDone: (String) -> Unit) {
     Column(
         Modifier.fillMaxSize().background(Palette.BgDeep).padding(horizontal = 120.dp, vertical = 80.dp)
     ) {
-        Text("Città per il meteo", color = Palette.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+        Text(tr("Città per il meteo", "Weather city"), color = Palette.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(6.dp))
-        Text("Scrivi il nome e premi Invio sulla tastiera.", color = Palette.TextMuted, fontSize = 13.sp)
+        Text(tr("Scrivi il nome e premi Invio sulla tastiera.", "Type the name and press Enter on the keyboard."), color = Palette.TextMuted, fontSize = 13.sp)
         Spacer(Modifier.height(20.dp))
         androidx.compose.foundation.text.BasicTextField(
             value = text,

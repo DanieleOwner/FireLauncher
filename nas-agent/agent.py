@@ -57,9 +57,11 @@ DEFAULTS = {
     "download_pause_s": 4,      # pausa tra un download e l'altro
     "language": "it-IT",
     "region": "IT",
+    "release_types": "2|3",     # TMDB: 2 = cinema (limitato), 3 = cinema; aggiungi |4 per le uscite digitali
     "max_height": 1080,
     "refresh_hour": 4,          # ora dell'aggiornamento notturno
     "ytdlp_update_days": 3,     # ogni quanti giorni aggiornare yt-dlp
+    "italian_recheck_days": 7,  # ogni quanti giorni cercare il trailer italiano per chi ha quello inglese
 }
 
 TMDB = "https://api.themoviedb.org/3"
@@ -129,7 +131,10 @@ class Tmdb:
         raise RuntimeError("TMDB non raggiungibile (%s)" % path)
 
     def candidates(self):
-        """Film popolari, finestra per finestra, dal piu' recente al piu' vecchio."""
+        """
+        Film usciti nel mondo nel periodo (data della prima uscita), finestra per finestra,
+        ordinati per popolarita'. La precedenza ai trailer in italiano la decide _refresh().
+        """
         today = dt.date.today()
         months_back = self.cfg["months_back"]
         step = self.cfg["bucket_months"]
@@ -150,13 +155,14 @@ class Tmdb:
                     include_video="false",
                     **{"primary_release_date.gte": lo.isoformat(),
                        "primary_release_date.lte": hi.isoformat(),
-                       "with_release_type": "2|3",
+                       "with_release_type": self.cfg["release_types"],
                        "page": page},
                 )
                 for m in data.get("results", []):
                     if m["id"] in seen or not m.get("backdrop_path"):
                         continue
                     seen.add(m["id"])
+                    m["_bucket"] = start // step
                     out.append(m)
                     got += 1
                     if got >= want:
@@ -289,7 +295,7 @@ def _refresh():
     # invece di aspettare che finiscano i film piu' recenti.
     by_bucket = {}
     for m in candidates:
-        by_bucket.setdefault(bucket_of(m.get("release_date") or "", cfg), []).append(m)
+        by_bucket.setdefault(m["_bucket"], []).append(m)
     queues = [by_bucket[b] for b in sorted(by_bucket)]
     candidates = []
     while any(queues):
@@ -300,79 +306,109 @@ def _refresh():
     write_manifest()  # subito, con quello che c'e' gia' su disco
     prefs = load_prefs()
     nope = set(prefs["nope"])
-    keep, failed, added = set(), 0, 0
+    keep, done, failed, added = set(), set(), 0, 0
     per_bucket_count = {}
-    for m in candidates:
-        bucket = bucket_of(m.get("release_date") or "", cfg)
-        if per_bucket_count.get(bucket, 0) >= cfg["per_bucket"] or m["id"] in nope:
-            continue
-        folder = os.path.join(MEDIA, str(m["id"]))
-        if is_complete(folder):
-            # Gia' scaricato: non richiedo nulla, lo conto e basta.
-            keep.add(str(m["id"]))
-            per_bucket_count[bucket] = per_bucket_count.get(bucket, 0) + 1
-            continue
-        try:
-            d = tmdb.details(m["id"])
-            if 0 < (d.get("runtime") or 0) < 60:
-                continue  # corti, special TV e simili
-            options = rank_trailers(d.get("videos", {}).get("results", []))[:3]
-            if not options:
-                continue
-            os.makedirs(folder, exist_ok=True)
-            marker = os.path.join(folder, "source.txt")
-            trailer, last_error = None, None
-            # Alcuni video non sono disponibili (bloccati, privati): provo il prossimo trailer in classifica.
-            for opt in options:
-                if os.path.exists(marker) and open(marker).read().strip() != opt["key"]:
-                    for f in ("video.mp4", "audio.m4a"):
-                        p = os.path.join(folder, f)
-                        if os.path.exists(p):
-                            os.remove(p)
-                try:
-                    download_trailer(opt["key"], folder, cfg)
-                    trailer = opt
-                    break
-                except Exception as e:
-                    last_error = e
-                    with open(marker, "w") as f:
-                        f.write(opt["key"])
-            if trailer is None:
-                shutil.rmtree(folder, ignore_errors=True)
-                raise last_error or RuntimeError("nessun trailer scaricabile")
-            with open(marker, "w") as f:
-                f.write(trailer["key"])
-            fetch_file(IMG + "/w1280" + d["backdrop_path"], os.path.join(folder, "backdrop.jpg"))
-            fetch_file(IMG + "/w300" + d["backdrop_path"], os.path.join(folder, "thumb.jpg"))
-        except Exception as e:
-            failed += 1
-            log.warning("Film %s (%s) saltato: %s", m["id"], m.get("title"), e)
-            continue
+    details_cache = {}
 
-        base = "media/%d/" % m["id"]
-        keep.add(str(m["id"]))
+    def details(mid):
+        if mid not in details_cache:
+            details_cache[mid] = tmdb.details(mid)
+        return details_cache[mid]
+
+    def accept(mid, bucket):
+        done.add(mid)
+        keep.add(str(mid))
         per_bucket_count[bucket] = per_bucket_count.get(bucket, 0) + 1
-        write_json(os.path.join(folder, "meta.json"), {
-            "id": m["id"],
-            "title": d.get("title") or m.get("title"),
-            "original_title": d.get("original_title"),
-            "overview": d.get("overview") or "",
-            "release_date": d.get("release_date") or m.get("release_date"),
-            "rating": round(d.get("vote_average") or 0, 1),
-            "runtime": d.get("runtime") or 0,
-            "genres": [g["name"] for g in d.get("genres", [])],
-            "popularity": d.get("popularity") or m.get("popularity") or 0,
-            "lang": trailer.get("iso_639_1") or "",
-            "video": base + "video.mp4",
-            "audio": base + "audio.m4a",
-            "thumb": base + "thumb.jpg",
-            "backdrop": base + "backdrop.jpg",
-        })
-        added += 1
-        # Ricostruisco il manifest ogni 5 trailer: il launcher li vede appena pronti.
-        if added % 5 == 1:
-            write_manifest()
-        time.sleep(cfg["download_pause_s"])  # con calma, per non farsi limitare da YouTube
+
+    # Due giri: prima i film che hanno un trailer in italiano, poi, se in una finestra
+    # resta posto, quelli che ce l'hanno solo in altre lingue.
+    for italian_pass in (True, False):
+        for m in candidates:
+            mid, bucket = m["id"], m["_bucket"]
+            if mid in done or mid in nope or per_bucket_count.get(bucket, 0) >= cfg["per_bucket"]:
+                continue
+            folder = os.path.join(MEDIA, str(mid))
+            meta = read_meta(folder) if is_complete(folder) else None
+            try:
+                if meta is not None and not meta_outdated(folder) and not italian_upgrade_due(folder, cfg):
+                    # Gia' scaricato e niente da ricontrollare.
+                    if italian_pass and meta.get("lang") != "it":
+                        continue  # lo conto al secondo giro
+                    accept(mid, bucket)
+                    continue
+                d = details(mid)
+                if 0 < (d.get("runtime") or 0) < 60:
+                    done.add(mid)
+                    continue  # corti, special TV e simili
+                options = rank_trailers(d.get("videos", {}).get("results", []))[:3]
+                if not options:
+                    done.add(mid)
+                    continue
+                has_italian = options[0].get("iso_639_1") == "it"
+                if italian_pass and not has_italian:
+                    continue
+                if meta is not None:
+                    fix_release_date(folder, d)
+                    touch(os.path.join(folder, "checked.txt"))
+                    current = open(os.path.join(folder, "source.txt")).read().strip()
+                    if not has_italian or options[0]["key"] == current or meta.get("lang") == "it":
+                        accept(mid, bucket)
+                        continue
+                    log.info("Trailer italiano disponibile per %s: lo scarico", d.get("title"))
+                os.makedirs(folder, exist_ok=True)
+                marker = os.path.join(folder, "source.txt")
+                trailer, last_error = None, None
+                # Alcuni video non sono disponibili (bloccati, privati): provo il prossimo trailer in classifica.
+                for opt in options:
+                    if os.path.exists(marker) and open(marker).read().strip() != opt["key"]:
+                        for f in ("video.mp4", "audio.m4a"):
+                            p = os.path.join(folder, f)
+                            if os.path.exists(p):
+                                os.remove(p)
+                    try:
+                        download_trailer(opt["key"], folder, cfg)
+                        trailer = opt
+                        break
+                    except Exception as e:
+                        last_error = e
+                        with open(marker, "w") as f:
+                            f.write(opt["key"])
+                if trailer is None:
+                    shutil.rmtree(folder, ignore_errors=True)
+                    raise last_error or RuntimeError("nessun trailer scaricabile")
+                with open(marker, "w") as f:
+                    f.write(trailer["key"])
+                fetch_file(IMG + "/w1280" + d["backdrop_path"], os.path.join(folder, "backdrop.jpg"))
+                fetch_file(IMG + "/w300" + d["backdrop_path"], os.path.join(folder, "thumb.jpg"))
+            except Exception as e:
+                done.add(mid)
+                failed += 1
+                log.warning("Film %s (%s) saltato: %s", mid, m.get("title"), e)
+                continue
+
+            base = "media/%d/" % mid
+            accept(mid, bucket)
+            write_json(os.path.join(folder, "meta.json"), {
+                "id": mid,
+                "title": d.get("title") or m.get("title"),
+                "original_title": d.get("original_title"),
+                "overview": d.get("overview") or "",
+                "release_date": d.get("release_date") or m.get("release_date"),
+                "rating": round(d.get("vote_average") or 0, 1),
+                "runtime": d.get("runtime") or 0,
+                "genres": [g["name"] for g in d.get("genres", [])],
+                "popularity": d.get("popularity") or m.get("popularity") or 0,
+                "lang": trailer.get("iso_639_1") or "",
+                "video": base + "video.mp4",
+                "audio": base + "audio.m4a",
+                "thumb": base + "thumb.jpg",
+                "backdrop": base + "backdrop.jpg",
+            })
+            added += 1
+            # Ricostruisco il manifest ogni 5 trailer: il launcher li vede appena pronti.
+            if added % 5 == 1:
+                write_manifest()
+            time.sleep(cfg["download_pause_s"])  # con calma, per non farsi limitare da YouTube
 
     removed = cleanup(keep)
     write_manifest()
@@ -396,6 +432,47 @@ manifest_lock = threading.Lock()
 
 def is_complete(folder):
     return all(os.path.exists(os.path.join(folder, f)) for f in REQUIRED)
+
+
+def touch(path):
+    with open(path, "w") as f:
+        f.write(str(int(time.time())))
+
+
+def read_meta(folder):
+    try:
+        with open(os.path.join(folder, "meta.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def meta_outdated(folder):
+    """Pochi meta.json hanno avuto per errore la data di uscita italiana invece di quella mondiale."""
+    meta = read_meta(folder)
+    return meta is not None and "release_region" in meta
+
+
+def fix_release_date(folder, details):
+    meta = read_meta(folder)
+    if meta is None or "release_region" not in meta:
+        return
+    meta.pop("release_region", None)
+    meta["release_date"] = details.get("release_date") or meta.get("release_date")
+    write_json(os.path.join(folder, "meta.json"), meta)
+
+
+def italian_upgrade_due(folder, cfg):
+    """True se il trailer scaricato non e' in italiano e non lo ricontrollo da qualche giorno."""
+    try:
+        with open(os.path.join(folder, "meta.json"), encoding="utf-8") as f:
+            if json.load(f).get("lang") == "it":
+                return False
+    except (OSError, ValueError):
+        return False
+    stamp = os.path.join(folder, "checked.txt")
+    days = cfg["italian_recheck_days"]
+    return not os.path.exists(stamp) or time.time() - os.path.getmtime(stamp) > days * 86400
 
 
 def write_json(path, data):

@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class PlayMode { WINDOW, FULLSCREEN }
 
+/** Quali trailer mostrare in base alla lingua. */
+enum class TrailerLanguage { ITALIAN_FIRST, ITALIAN_ONLY, ANY }
+
+/** Lingua dell'interfaccia del launcher (titoli e trame restano quelli di TMDB). */
+enum class UiLanguage { IT, EN }
+
 data class LauncherSettings(
     val trailersEnabled: Boolean = true,
     /** Film usciti al massimo questi mesi fa. */
@@ -23,6 +29,8 @@ data class LauncherSettings(
     val weatherLon: Double = 12.6427,
     /** Pacchetti delle app in home, nell'ordine in cui compaiono. */
     val favorites: List<String> = Apps.FAVORITES,
+    val trailerLanguage: TrailerLanguage = TrailerLanguage.ITALIAN_FIRST,
+    val uiLanguage: UiLanguage = UiLanguage.IT,
 ) {
     val hasWeatherPlace: Boolean get() = !weatherLat.isNaN() && !weatherLon.isNaN()
 
@@ -55,6 +63,8 @@ class SettingsStore(context: Context) {
             .putString("weatherLat", next.weatherLat.toString())
             .putString("weatherLon", next.weatherLon.toString())
             .putString("favorites", next.favorites.joinToString(","))
+            .putString("trailerLanguage", next.trailerLanguage.name)
+            .putString("uiLanguage", next.uiLanguage.name)
             .apply()
     }
 
@@ -74,6 +84,10 @@ class SettingsStore(context: Context) {
             weatherLon = prefs.getString("weatherLon", null)?.toDoubleOrNull() ?: d.weatherLon,
             favorites = prefs.getString("favorites", null)
                 ?.split(',')?.filter { it.isNotBlank() } ?: d.favorites,
+            trailerLanguage = runCatching { TrailerLanguage.valueOf(prefs.getString("trailerLanguage", null)!!) }
+                .getOrDefault(d.trailerLanguage),
+            uiLanguage = runCatching { UiLanguage.valueOf(prefs.getString("uiLanguage", null)!!) }
+                .getOrDefault(d.uiLanguage),
         ).sanitized()
     }
 

@@ -16,6 +16,10 @@ import dev.firelauncher.data.Apps
 import dev.firelauncher.data.SettingsStore
 import dev.firelauncher.data.Trailer
 import dev.firelauncher.data.TrailerRepository
+import dev.firelauncher.data.UiLanguage
+import dev.firelauncher.ui.LocalUiLanguage
+import dev.firelauncher.ui.tr
+import androidx.compose.runtime.CompositionLocalProvider
 import dev.firelauncher.data.Weather
 import dev.firelauncher.data.WeatherNow
 import dev.firelauncher.player.TrailerPlayer
@@ -63,11 +67,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setCity(city: String) {
-        cityStatus.value = "Cerco…"
+        val en = settings.state.value.uiLanguage == UiLanguage.EN
+        cityStatus.value = if (en) "Searching…" else "Cerco…"
         lifecycleScope.launch {
             val place = Weather.geocode(city)
             if (place == null) {
-                cityStatus.value = "Non trovata"
+                cityStatus.value = if (en) "Not found" else "Non trovata"
             } else {
                 settings.update { it.copy(weatherCity = place.name, weatherLat = place.lat, weatherLon = place.lon) }
                 cityStatus.value = null
@@ -85,8 +90,8 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            LauncherTheme {
-                val s by settings.state.collectAsState()
+            val s by settings.state.collectAsState()
+            CompositionLocalProvider(LocalUiLanguage provides s.uiLanguage) { LauncherTheme {
                 val appList by apps.collectAsState()
                 val trailerState by trailers.state.collectAsState()
                 val current by screen.collectAsState()
@@ -151,8 +156,8 @@ class MainActivity : ComponentActivity() {
                             screen.value = Screen.Settings
                         },
                         onBack = { screen.value = Screen.Settings },
-                        title = "Aggiungi alla home",
-                        subtitle = "Scegli l'app da mettere in fondo alla fila",
+                        title = tr("Aggiungi alla home", "Add to home screen"),
+                        subtitle = tr("Scegli l'app da mettere in fondo alla fila", "Pick the app to add at the end of the row"),
                     )
                     is Screen.Fullscreen -> FullscreenPlayer(
                         trailers = visible,
@@ -164,7 +169,7 @@ class MainActivity : ComponentActivity() {
                         onExit = { screen.value = Screen.Home },
                     )
                 }
-            }
+            } }
         }
     }
 

@@ -80,6 +80,8 @@ fun FullscreenPlayer(
     }
 
     var feedback by remember { mutableStateOf<String?>(null) }
+    val msgRemoved = tr("Tolto dalla watchlist", "Removed from watchlist")
+    val msgAdded = tr("♥ Aggiunto alla watchlist", "♥ Added to watchlist")
     LaunchedEffect(feedback) { if (feedback != null) { delay(1800); feedback = null } }
 
     LaunchedEffect(trailer?.id) {
@@ -125,17 +127,13 @@ fun FullscreenPlayer(
                     Key.DirectionCenter, Key.Enter, Key.MediaPlayPause -> {
                         player.togglePause(); overlayTick++; true
                     }
-                    Key.MediaFastForward -> {
+                    // Avanti e indietro veloce: entrambi mettono (o tolgono) il cuore.
+                    Key.MediaFastForward, Key.MediaRewind -> {
                         trailer?.let { t ->
                             val liked = TrailerRepository.isLiked(t, prefs)
                             onPref(t, if (liked) null else Pref.LIKE)
-                            feedback = if (liked) "Tolto dalla watchlist" else "♥ Aggiunto alla watchlist"
+                            feedback = if (liked) msgRemoved else msgAdded
                         }
-                        overlayTick++; true
-                    }
-                    Key.MediaRewind -> {
-                        // Scartato: sparisce dall'elenco e parte il successivo da solo.
-                        trailer?.let { t -> onPref(t, Pref.NOPE); feedback = "✕ Scartato" }
                         overlayTick++; true
                     }
                     Key.DirectionUp, Key.DirectionDown -> { overlayTick++; true }
@@ -165,7 +163,8 @@ fun FullscreenPlayer(
             ) {
                 Text(t.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
                 Text(
-                    "Trailer · ${monthYear(t.releaseDate)} · ${index + 1} di ${trailers.size}",
+                    "Trailer · ${monthYear(t.releaseDate, uiLocale())} · " +
+                        tr("${index + 1} di ${trailers.size}", "${index + 1} of ${trailers.size}"),
                     color = Palette.TextMuted, fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -178,7 +177,7 @@ fun FullscreenPlayer(
                     Spacer(Modifier.weight(1f))
                     Text(
                         (if (TrailerRepository.isLiked(t, prefs)) "♥ In watchlist   " else "") +
-                            "OK pausa · ‹ › altro trailer · Indietro esci",
+                            tr("OK pausa · ‹ › altro trailer · Indietro esci", "OK pause · ‹ › other trailer · Back to exit"),
                         color = Palette.TextMuted, fontSize = 12.sp,
                     )
                 }

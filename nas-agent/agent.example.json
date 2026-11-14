@@ -8,5 +8,6 @@
   "region": "IT",
   "max_height": 1080,
   "refresh_hour": 4,
-  "ytdlp_update_days": 3
+  "ytdlp_update_days": 3,
+  "italian_recheck_days": 7
 }

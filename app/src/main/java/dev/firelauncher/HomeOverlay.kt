@@ -73,11 +73,15 @@ object HomeOverlay {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         }
         val now = Date()
+        // Le impostazioni sono in SharedPreferences: qui non c'è Compose, le leggo direttamente.
+        val en = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+            .getString("uiLanguage", null) == "EN"
+        val date = if (en) SimpleDateFormat("EEEE, MMMM d", Locale.ENGLISH) else SimpleDateFormat("EEEE d MMMM", Locale.ITALIAN)
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(text(72f, 0xFFF1EFE8.toInt(), SimpleDateFormat("HH:mm", Locale.ITALIAN).format(now)))
-            addView(text(16f, 0xFFAFA9EC.toInt(), SimpleDateFormat("EEEE d MMMM", Locale.ITALIAN).format(now)))
-            addView(text(13f, 0xFF7F77DD.toInt(), "Torno alla home…").apply { setPadding(0, 40, 0, 0) })
+            addView(text(16f, 0xFFAFA9EC.toInt(), date.format(now)))
+            addView(text(13f, 0xFF7F77DD.toInt(), if (en) "Going home…" else "Torno alla home…").apply { setPadding(0, 40, 0, 0) })
         }
         return FrameLayout(context).apply {
             setBackgroundColor(0xFF1B1838.toInt())

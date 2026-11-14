@@ -19,6 +19,7 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 
 **Trailers**
 - Carousel of movies released within a configurable window (default: 18 to 6 months ago), sorted by popularity.
+- Italian trailers first: the NAS prefers movies that have an Italian trailer, downloads the Italian version when it exists and re-checks English-only ones weekly. In settings you can show Italian trailers first, Italian only, or any language.
 - Title, plot, genres, runtime and rating from TMDB, in Italian by default.
 - Playback in the small preview window or full screen.
 - Instant start: the selected trailer is prepared as soon as it gets focus, and the beginning of neighboring trailers is pre-cached on disk.
@@ -28,8 +29,8 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 
 | Control | Action |
 |---|---|
-| **Watchlist** button below the plot (or ⏩ on the remote) | heart: add to / remove from the watchlist |
-| **Discard** button (or ⏪) | X: never show this movie again (also deleted from the NAS) |
+| **Watchlist** button below the plot (or ⏩ / ⏪ on the remote) | heart: add to / remove from the watchlist |
+| **Discard** button | X: never show this movie again (also deleted from the NAS) |
 | **Novità / Watchlist** tabs above the carousel (or ≡) | switch between recent trailers and your watchlist |
 | OK | play; press OK again to go full screen |
 | ‹ › in full screen | previous / next trailer |
@@ -40,6 +41,7 @@ Hearted trailers are **never removed** by the NAS rotation. Hearts and discards 
 - Trailers on/off, release window in months, how many to show (5–100 or "all"), preview window or full screen, audio in the preview window.
 - Apps on the home screen: add, remove, reorder.
 - City for the weather (default: Terni).
+- Interface language: Italian or English (movie titles and plots come from TMDB in Italian).
 
 ## Repository layout
 
@@ -95,7 +97,7 @@ To start it automatically in DSM: **Control Panel → Task Scheduler → Create 
 
 The service:
 - listens on port **8787** and refreshes the list every night at 4 AM;
-- keeps up to **1000 trailers**: 125 for each of the 8 three-month windows over the last 24 months;
+- keeps up to **1000 trailers**: 125 for each of the 8 three-month windows over the last 24 months, taken from TMDB's most popular movies worldwide in that window, giving priority to those with an Italian trailer;
 - downloads 1080p H.264 video and audio as separate files, so no ffmpeg is needed (the player merges them);
 - uses about 30 MB per trailer;
 - logs to `logs/agent.log`.
@@ -155,7 +157,6 @@ After Home is pressed, however, Android blocks apps from opening for **about 5 s
 - Downloading videos from YouTube with `yt-dlp` is against YouTube's Terms of Service. This project is meant for personal use, at your own risk.
 - Movie data comes from [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
 - Weather data comes from [Open-Meteo](https://open-meteo.com/).
-- The app UI is in Italian.
 
 ## License
 
