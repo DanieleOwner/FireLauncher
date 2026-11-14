@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
     private val apps = MutableStateFlow<List<AppEntry>>(emptyList())
     private val screen = MutableStateFlow<Screen>(Screen.Home)
     private val selected = MutableStateFlow(0)
+    /** Posizione salvata per ogni elenco: false = Novità, true = Watchlist. */
+    private val savedIndex = HashMap<Boolean, Int>()
     private val homeServiceEnabled = MutableStateFlow(false)
     private val watchlist = MutableStateFlow(false)
     private val weather = MutableStateFlow<WeatherNow?>(null)
@@ -122,9 +124,11 @@ class MainActivity : ComponentActivity() {
                         selectedIndex = sel,
                         onSelectedChange = { selected.value = it },
                         onToggleWatchlist = {
+                            // Novità e Watchlist ricordano ognuna il trailer a cui eri arrivato.
                             player.stop()
+                            savedIndex[watchlist.value] = selected.value
                             watchlist.value = !watchlist.value
-                            selected.value = 0
+                            selected.value = savedIndex[watchlist.value] ?: 0
                         },
                         onPref = { t, p -> trailers.setPref(s.serverUrl, t.id, p) },
                         onLaunch = ::launch,

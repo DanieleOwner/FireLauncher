@@ -101,6 +101,11 @@ class TrailerPlayer(context: Context) {
         if (player.isPlaying) player.pause() else player.play()
     }
 
+    fun seekBy(deltaMs: Long) {
+        val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + deltaMs).coerceIn(0, duration - 500))
+    }
+
     fun stop() {
         player.pause()
         if (currentId != null) player.seekTo(0)

@@ -29,9 +29,11 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 
 | Control | Action |
 |---|---|
-| **Watchlist** button below the plot (or ⏩ / ⏪ on the remote) | heart: add to / remove from the watchlist |
+| **Watchlist** button below the plot (or ⏩ / ⏪ on the remote, on the home screen) | heart: add to / remove from the watchlist |
+| ⏯ play/pause | pause and resume the trailer, in the preview window or full screen |
+| ⏪ / ⏩ in full screen | jump back / forward 10 seconds |
 | **Discard** button | X: never show this movie again (also deleted from the NAS) |
-| **Novità / Watchlist** tabs above the buttons (or ≡) | switch between recent trailers and your watchlist |
+| **Novità / Watchlist** tabs above the buttons (or ≡) | switch between recent trailers and your watchlist; each list remembers where you were |
 | OK | play; press OK again to go full screen |
 | ‹ › in full screen | previous / next trailer |
 

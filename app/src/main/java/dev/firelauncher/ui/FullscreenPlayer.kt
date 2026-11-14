@@ -34,7 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -119,23 +119,17 @@ fun FullscreenPlayer(
             .background(Color.Black)
             .focusRequester(focus)
             .focusable()
-            .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
                     Key.DirectionRight -> { go(1); true }
                     Key.DirectionLeft -> { go(-1); true }
-                    Key.DirectionCenter, Key.Enter, Key.MediaPlayPause -> {
+                    Key.DirectionCenter, Key.Enter, Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
                         player.togglePause(); overlayTick++; true
                     }
-                    // Avanti e indietro veloce: entrambi mettono (o tolgono) il cuore.
-                    Key.MediaFastForward, Key.MediaRewind -> {
-                        trailer?.let { t ->
-                            val liked = TrailerRepository.isLiked(t, prefs)
-                            onPref(t, if (liked) null else Pref.LIKE)
-                            feedback = if (liked) msgRemoved else msgAdded
-                        }
-                        overlayTick++; true
-                    }
+                    // A tutto schermo avanti e indietro veloce fanno il loro mestiere: ±10 secondi.
+                    Key.MediaFastForward -> { player.seekBy(SEEK_MS); overlayTick++; true }
+                    Key.MediaRewind -> { player.seekBy(-SEEK_MS); overlayTick++; true }
                     Key.DirectionUp, Key.DirectionDown -> { overlayTick++; true }
                     else -> false
                 }
@@ -177,7 +171,10 @@ fun FullscreenPlayer(
                     Spacer(Modifier.weight(1f))
                     Text(
                         (if (TrailerRepository.isLiked(t, prefs)) "♥ In watchlist   " else "") +
-                            tr("OK pausa · ‹ › altro trailer · Indietro esci", "OK pause · ‹ › other trailer · Back to exit"),
+                            tr(
+                                "OK pausa · ⏪ ⏩ ±10 s · ‹ › altro trailer · Indietro esci",
+                                "OK pause · ⏪ ⏩ ±10 s · ‹ › other trailer · Back to exit",
+                            ),
                         color = Palette.TextMuted, fontSize = 12.sp,
                     )
                 }
@@ -185,6 +182,8 @@ fun FullscreenPlayer(
         }
     }
 }
+
+private const val SEEK_MS = 10_000L
 
 private fun fmt(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)

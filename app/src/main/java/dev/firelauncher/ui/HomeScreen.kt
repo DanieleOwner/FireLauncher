@@ -199,8 +199,17 @@ fun HomeScreen(
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
-                    // Avanti e indietro veloce: entrambi mettono (o tolgono) il cuore.
+                    // Nella home avanti e indietro veloce mettono (o tolgono) il cuore.
                     Key.MediaFastForward, Key.MediaRewind -> { current?.let(::like); current != null }
+                    // Play/pausa: mette in pausa o riprende il trailer in finestrina; se non è partito, lo avvia.
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        val t = current
+                        when {
+                            t == null -> false
+                            playing && player.currentId == t.id -> { player.togglePause(); true }
+                            else -> { activate(index); true }
+                        }
+                    }
                     Key.Menu -> { if (settings.trailersEnabled) onToggleWatchlist(); true }
                     else -> false
                 }
