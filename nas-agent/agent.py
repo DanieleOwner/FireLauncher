@@ -175,9 +175,46 @@ class Tmdb:
         return self.get(
             "/movie/%d" % movie_id,
             language=self.cfg["language"],
-            append_to_response="videos",
+            append_to_response="videos,translations",
             include_video_language="it,en,null",
         )
+
+    def genre_names(self, language):
+        data = self.get("/genre/movie/list", language=language)
+        return {g["id"]: g["name"] for g in data.get("genres", [])}
+
+
+def texts(d, genres_en):
+    """
+    Titolo, trama e generi in italiano e in inglese. Le traduzioni su TMDB le scrivono gli utenti:
+    se manca quella italiana, TMDB darebbe il titolo originale (anche in arabo o coreano) e una trama
+    vuota, quindi ripiego sull'inglese.
+    """
+    def pick(lang, country):
+        found = {}
+        for t in d.get("translations", {}).get("translations", []):
+            if t.get("iso_639_1") == lang:
+                data = t.get("data") or {}
+                if t.get("iso_3166_1") == country or not found:
+                    found = data
+        return found
+
+    it_t, en_t = pick("it", "IT"), pick("en", "US")
+    orig = (d.get("original_title") or "").strip()
+    orig_lang = d.get("original_language")
+    it_title = (it_t.get("title") or "").strip()
+    en_title = (en_t.get("title") or "").strip()
+    it_over = (it_t.get("overview") or d.get("overview") or "").strip()
+    en_over = (en_t.get("overview") or "").strip()
+    readable_orig = orig if orig_lang in ("it", "en") else ""
+    return {
+        "title": it_title or readable_orig or en_title or orig,
+        "title_en": en_title or (orig if orig_lang == "en" else "") or it_title or orig,
+        "overview": it_over or en_over,
+        "overview_en": en_over or it_over,
+        "genres": [g["name"] for g in d.get("genres", [])],
+        "genres_en": [genres_en.get(g["id"], g["name"]) for g in d.get("genres", [])],
+    }
 
 
 def add_months(d, months):
@@ -288,6 +325,11 @@ def _refresh():
         log.warning("Aggiornamento yt-dlp non riuscito: %s", e)
 
     started = time.time()
+    try:
+        genres_en = tmdb.genre_names("en-US")
+    except Exception as e:
+        log.warning("Generi in inglese non disponibili: %s", e)
+        genres_en = {}
     candidates = tmdb.candidates()
     log.info("Candidati da TMDB: %d", len(candidates))
 
@@ -349,6 +391,7 @@ def _refresh():
                     continue
                 if meta is not None:
                     fix_release_date(folder, d)
+                    update_texts(folder, d, genres_en)
                     touch(os.path.join(folder, "checked.txt"))
                     current = open(os.path.join(folder, "source.txt")).read().strip()
                     if not has_italian or options[0]["key"] == current or meta.get("lang") == "it":
@@ -390,13 +433,11 @@ def _refresh():
             accept(mid, bucket)
             write_json(os.path.join(folder, "meta.json"), {
                 "id": mid,
-                "title": d.get("title") or m.get("title"),
+                **texts(d, genres_en),
                 "original_title": d.get("original_title"),
-                "overview": d.get("overview") or "",
                 "release_date": d.get("release_date") or m.get("release_date"),
                 "rating": round(d.get("vote_average") or 0, 1),
                 "runtime": d.get("runtime") or 0,
-                "genres": [g["name"] for g in d.get("genres", [])],
                 "popularity": d.get("popularity") or m.get("popularity") or 0,
                 "lang": trailer.get("iso_639_1") or "",
                 "video": base + "video.mp4",
@@ -448,9 +489,20 @@ def read_meta(folder):
 
 
 def meta_outdated(folder):
-    """Pochi meta.json hanno avuto per errore la data di uscita italiana invece di quella mondiale."""
+    """
+    meta.json da aggiornare: senza i testi in inglese (versioni precedenti) oppure con la data
+    di uscita italiana messa per errore al posto di quella mondiale.
+    """
     meta = read_meta(folder)
-    return meta is not None and "release_region" in meta
+    return meta is not None and ("release_region" in meta or "title_en" not in meta)
+
+
+def update_texts(folder, details, genres_en):
+    meta = read_meta(folder)
+    if meta is None:
+        return
+    meta.update(texts(details, genres_en))
+    write_json(os.path.join(folder, "meta.json"), meta)
 
 
 def fix_release_date(folder, details):

@@ -30,7 +30,14 @@ data class Trailer(
     val thumbUrl: String?,
     val backdropUrl: String?,
     val likedOnServer: Boolean,
+    val titleEn: String,
+    val overviewEn: String,
+    val genresEn: List<String>,
 ) {
+    fun title(lang: UiLanguage) = if (lang == UiLanguage.EN) titleEn.ifBlank { title } else title
+    fun overview(lang: UiLanguage) = if (lang == UiLanguage.EN) overviewEn.ifBlank { overview } else overview
+    fun genres(lang: UiLanguage) = if (lang == UiLanguage.EN && genresEn.isNotEmpty()) genresEn else genres
+
     /** Anno*12 + mese (0-based), per confrontare le date senza java.time (API 25). */
     val releaseMonthIndex: Int? = releaseDate.split("-").let { parts ->
         val y = parts.getOrNull(0)?.toIntOrNull()
@@ -167,6 +174,7 @@ class TrailerRepository(context: Context) {
             val o = arr.getJSONObject(i)
             val video = abs(o.optString("video")) ?: return@mapNotNull null
             val genres = o.optJSONArray("genres")
+            val genresEn = o.optJSONArray("genres_en")
             Trailer(
                 id = o.getInt("id"),
                 title = o.optString("title"),
@@ -181,6 +189,9 @@ class TrailerRepository(context: Context) {
                 thumbUrl = abs(o.optString("thumb")),
                 backdropUrl = abs(o.optString("backdrop")),
                 likedOnServer = o.optBoolean("liked", false),
+                titleEn = o.optString("title_en"),
+                overviewEn = o.optString("overview_en"),
+                genresEn = if (genresEn == null) emptyList() else (0 until genresEn.length()).map { genresEn.getString(it) },
             )
         }
         return items to root.optString("generated").ifBlank { null }

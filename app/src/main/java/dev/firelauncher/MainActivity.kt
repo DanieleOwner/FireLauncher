@@ -212,7 +212,7 @@ class MainActivity : ComponentActivity() {
     private fun launch(app: AppEntry) = safeStart(app.launch)
 
     private fun searchOnStremio(t: Trailer) {
-        val search = Intent(Intent.ACTION_VIEW, Uri.parse("stremio:///search?search=" + Uri.encode(t.title)))
+        val search = Intent(Intent.ACTION_VIEW, Uri.parse("stremio:///search?search=" + Uri.encode(t.title(settings.state.value.uiLanguage))))
             .setPackage(Apps.STREMIO)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (!safeStart(search)) {

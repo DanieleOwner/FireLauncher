@@ -172,6 +172,7 @@ fun HomeScreen(
         }
     }
 
+    val lang = LocalUiLanguage.current
     val msgRemoved = tr("Tolto dalla watchlist", "Removed from watchlist")
     val msgAdded = tr("♥ Aggiunto alla watchlist", "♥ Added to watchlist")
     val msgDiscarded = tr("non lo vedrai più", "you won't see it again")
@@ -187,7 +188,7 @@ fun HomeScreen(
         refocus = true
         player.stop()
         onPref(t, Pref.NOPE)
-        toast = "✕ ${t.title}: $msgDiscarded"
+        toast = "✕ ${t.title(lang)}: $msgDiscarded"
     }
 
     Box(
@@ -211,12 +212,16 @@ fun HomeScreen(
             Spacer(Modifier.height(10.dp))
 
             if (showSlider) {
-                Row(Modifier.fillMaxWidth().height(214.dp)) {
+                // Schede Novità/Watchlist e pulsanti in fondo alla colonna di sinistra,
+                // subito sopra le miniature dei trailer.
+                val tabs: @Composable () -> Unit = { SliderTabs(watchlist, watchlistCount, modeFocus, onToggleWatchlist) }
+                Row(Modifier.fillMaxWidth().height(250.dp)) {
                     if (current != null) {
                         HeroInfo(
                             trailer = current,
                             liked = TrailerRepository.isLiked(current, prefs),
-                            modifier = Modifier.weight(1f).padding(end = 28.dp, top = 8.dp),
+                            modifier = Modifier.weight(1f).padding(end = 28.dp, top = 4.dp),
+                            tabs = tabs,
                             onPlay = { activate(index) },
                             onLike = { like(current) },
                             onNope = { nope(current) },
@@ -224,11 +229,9 @@ fun HomeScreen(
                         )
                         VideoWindow(current, player, playing)
                     } else {
-                        EmptyWatchlist(Modifier.weight(1f))
+                        EmptyWatchlist(Modifier.weight(1f), tabs)
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                SliderTabs(watchlist, watchlistCount, modeFocus, onToggleWatchlist)
                 StillRow(
                     state = listState,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
@@ -313,11 +316,13 @@ private fun HeroInfo(
     trailer: Trailer,
     liked: Boolean,
     modifier: Modifier,
+    tabs: @Composable () -> Unit,
     onPlay: () -> Unit,
     onLike: () -> Unit,
     onNope: () -> Unit,
     onStremio: () -> Unit,
 ) {
+    val lang = LocalUiLanguage.current
     Column(modifier) {
         val released = monthYear(trailer.releaseDate, uiLocale())
         val langNote = if (trailer.language.isNotBlank() && trailer.language != "it")
@@ -329,22 +334,25 @@ private fun HeroInfo(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            trailer.title, color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.Medium,
+            trailer.title(lang), color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.Medium,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(4.dp))
         val meta = buildList {
-            if (trailer.genres.isNotEmpty()) add(trailer.genres.take(2).joinToString(", "))
+            val genres = trailer.genres(lang)
+            if (genres.isNotEmpty()) add(genres.take(2).joinToString(", "))
             if (trailer.runtime > 0) add("${trailer.runtime / 60}h ${trailer.runtime % 60}m")
             if (trailer.rating > 0) add("★ %.1f".format(trailer.rating).replace('.', ','))
         }.joinToString(" · ")
         if (meta.isNotEmpty()) Text(meta, color = Palette.TextSoft, fontSize = 12.sp)
         Spacer(Modifier.height(6.dp))
         Text(
-            trailer.overview, color = Palette.TextSoft, fontSize = 12.sp, lineHeight = 17.sp,
+            trailer.overview(lang), color = Palette.TextSoft, fontSize = 12.sp, lineHeight = 17.sp,
             maxLines = 3, overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.weight(1f))
+        tabs()
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton(tr("Guarda", "Play"), Icons.Default.PlayArrow, filled = true, onClick = onPlay)
             PillButton(
@@ -484,10 +492,11 @@ private fun StillRow(
 @Composable
 private fun TrailerThumb(trailer: Trailer, liked: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val ctx = LocalContext.current
+    val title = trailer.title(LocalUiLanguage.current)
     FocusTile(onClick = onClick, modifier = modifier.width(150.dp).height(84.dp), radius = 8.dp, focusedScale = 1.1f) {
         AsyncImage(
             model = ImageRequest.Builder(ctx).data(trailer.thumbUrl ?: trailer.backdropUrl).build(),
-            contentDescription = trailer.title,
+            contentDescription = title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
@@ -503,15 +512,15 @@ private fun TrailerThumb(trailer: Trailer, liked: Boolean, modifier: Modifier, o
             )
         }
         Text(
-            trailer.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 8.dp, vertical = 5.dp),
         )
     }
 }
 
 @Composable
-private fun EmptyWatchlist(modifier: Modifier) {
-    Column(modifier.padding(top = 40.dp)) {
+private fun EmptyWatchlist(modifier: Modifier, tabs: @Composable () -> Unit) {
+    Column(modifier.padding(top = 40.dp, bottom = 4.dp)) {
         Text(tr("La tua watchlist è vuota", "Your watchlist is empty"), color = Palette.Text, fontSize = 24.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -523,6 +532,8 @@ private fun EmptyWatchlist(modifier: Modifier) {
             ),
             color = Palette.TextSoft, fontSize = 13.sp, lineHeight = 19.sp,
         )
+        Spacer(Modifier.weight(1f))
+        tabs()
     }
 }
 

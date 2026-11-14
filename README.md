@@ -31,7 +31,7 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 |---|---|
 | **Watchlist** button below the plot (or ⏩ / ⏪ on the remote) | heart: add to / remove from the watchlist |
 | **Discard** button | X: never show this movie again (also deleted from the NAS) |
-| **Novità / Watchlist** tabs above the carousel (or ≡) | switch between recent trailers and your watchlist |
+| **Novità / Watchlist** tabs above the buttons (or ≡) | switch between recent trailers and your watchlist |
 | OK | play; press OK again to go full screen |
 | ‹ › in full screen | previous / next trailer |
 
@@ -41,7 +41,7 @@ Hearted trailers are **never removed** by the NAS rotation. Hearts and discards 
 - Trailers on/off, release window in months, how many to show (5–100 or "all"), preview window or full screen, audio in the preview window.
 - Apps on the home screen: add, remove, reorder.
 - City for the weather (default: Terni).
-- Interface language: Italian or English (movie titles and plots come from TMDB in Italian).
+- Interface language: Italian or English. Movie titles, plots and genres follow it too (from TMDB); when TMDB has no Italian translation, the English one is used instead of the original-language title and an empty plot.
 
 ## Repository layout
 

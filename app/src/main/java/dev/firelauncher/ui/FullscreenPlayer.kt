@@ -161,7 +161,7 @@ fun FullscreenPlayer(
                     Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f))
                 ).padding(start = 48.dp, end = 48.dp, top = 60.dp, bottom = 32.dp)
             ) {
-                Text(t.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                Text(t.title(LocalUiLanguage.current), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
                 Text(
                     "Trailer · ${monthYear(t.releaseDate, uiLocale())} · " +
                         tr("${index + 1} di ${trailers.size}", "${index + 1} of ${trailers.size}"),

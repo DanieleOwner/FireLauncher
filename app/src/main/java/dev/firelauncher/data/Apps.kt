@@ -27,6 +27,9 @@ object Apps {
     )
 
     const val STREMIO = "com.stremio.one"
+
+    /** Nomi più chiari di quelli che alcune app dichiarano al sistema. */
+    private val LABELS = mapOf("com.amazon.avod" to "Prime Video")
     private const val APPSTORE = "com.amazon.venezia"
     private const val DOWNLOADER = "com.esaba.downloader"
 
@@ -56,7 +59,7 @@ object Apps {
                 val icon = runCatching { info.loadIcon(pm) }.getOrNull()
                 seen[pkg] = AppEntry(
                     pkg = pkg,
-                    label = info.loadLabel(pm).toString(),
+                    label = LABELS[pkg] ?: info.loadLabel(pm).toString(),
                     banner = banner?.toImage(320, 180),
                     icon = icon?.toImage(176, 176),
                     launch = launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
