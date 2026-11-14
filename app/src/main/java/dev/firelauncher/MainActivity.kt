@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                         homeServiceEnabled = serviceOn,
                         onChange = settings::update,
                         onRefreshTrailers = { trailers.refresh(s.serverUrl, force = true) },
-                        onOpenFireTvSettings = { safeStart(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                        onOpenFireTvSettings = { Apps.settingsIntents().any(::safeStart) },
                         cityStatus = cityMsg,
                         onCitySubmit = ::setCity,
                         apps = appList,

@@ -39,8 +39,9 @@ class HomeWatcherService : Service() {
         super.onCreate()
         usage = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         lastCheck = System.currentTimeMillis()
-        handler.post(tick)
-        startLogcatWatcher()
+        // Gli eventi di utilizzo non distinguono il tasto Home dall'apertura delle impostazioni Amazon:
+        // li uso solo se manca il permesso READ_LOGS.
+        if (!startLogcatWatcher()) handler.post(tick)
         Log.i(TAG, "Avviato")
     }
 
@@ -58,10 +59,10 @@ class HomeWatcherService : Service() {
      * e vedo la richiesta di aprire la home Amazon nell'istante in cui parte, prima ancora che compaia.
      * Gli eventi di utilizzo sopra restano come rete di sicurezza (arrivano con qualche secondo di ritardo).
      */
-    private fun startLogcatWatcher() {
+    private fun startLogcatWatcher(): Boolean {
         if (checkSelfPermission(android.Manifest.permission.READ_LOGS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             Log.i(TAG, "READ_LOGS non concesso: uso solo gli eventi di utilizzo")
-            return
+            return false
         }
         logcatThread = Thread {
             while (!Thread.currentThread().isInterrupted) {
@@ -69,7 +70,13 @@ class HomeWatcherService : Service() {
                     val p = Runtime.getRuntime().exec(arrayOf("logcat", "-T", "1", "-b", "main,system", "-s", "ActivityManager:I"))
                     logcatProcess = p
                     p.inputStream.bufferedReader().forEachLine { line ->
-                        if (line.contains("START u0") && line.contains("cmp=$AMAZON_LAUNCHER/") && line.contains(AMAZON_HOME)) {
+                        // Solo il vero tasto Home, che il sistema (uid 1000) invia alla home Amazon.
+                        // Le impostazioni Amazon si aprono anch'esse dentro HomeActivity, ma la richiesta
+                        // parte dal launcher Amazon stesso (un altro uid) e va lasciata stare.
+                        if (line.contains("START u0") && line.contains("category.HOME") &&
+                            line.contains("cmp=$AMAZON_LAUNCHER/") && line.contains(AMAZON_HOME) &&
+                            line.contains("from uid 1000 ")
+                        ) {
                             handler.post { redirect(System.currentTimeMillis()) }
                         }
                     }
@@ -79,6 +86,7 @@ class HomeWatcherService : Service() {
                 try { Thread.sleep(2000) } catch (_: InterruptedException) { return@Thread }
             }
         }.apply { isDaemon = true; name = "home-logcat"; start() }
+        return true
     }
 
     /**

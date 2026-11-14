@@ -73,5 +73,22 @@ object Apps {
             ?: pm.getLaunchIntentForPackage(DOWNLOADER))
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+    /**
+     * Le impostazioni di Fire OS stanno dentro il launcher Amazon (scheda Impostazioni della sua home).
+     * L'azione standard Android ACTION_SETTINGS porta invece a una schermata vuota di compatibilità,
+     * quindi apro direttamente le activity del launcher, con quella standard solo come ultima risorsa.
+     */
+    fun settingsIntents(): List<Intent> = listOf(
+        Intent(Intent.ACTION_MAIN).setComponent(
+            android.content.ComponentName(AMAZON_LAUNCHER, "$AMAZON_LAUNCHER.ui.SettingsActivity")
+        ),
+        Intent(Intent.ACTION_MAIN).setComponent(
+            android.content.ComponentName(AMAZON_LAUNCHER, "$AMAZON_LAUNCHER.ui.MainSettingsActivity")
+        ),
+        Intent(android.provider.Settings.ACTION_SETTINGS),
+    ).map { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+
+    private const val AMAZON_LAUNCHER = "com.amazon.tv.launcher"
+
     private fun Drawable.toImage(w: Int, h: Int): ImageBitmap = toBitmap(w, h).asImageBitmap()
 }
