@@ -152,9 +152,29 @@ class HomeWatcherService : Service() {
     }
 }
 
-/** Riavvia il controllo della home all'accensione e dopo un aggiornamento dell'app. */
+/**
+ * All'accensione: avvia il controllo del tasto Home e apre FireLauncher al posto della home Amazon,
+ * che Fire OS ha già mostrato. Dopo un aggiornamento dell'app riavvia solo il controllo.
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        Log.i("HomeWatcher", "Ricevuto ${intent.action}")
         HomeWatcherService.start(context)
+        val boot = intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED
+        // Arrivano entrambi: apro il launcher solo la prima volta dopo l'accensione.
+        if (boot && !openedSinceBoot) {
+            openedSinceBoot = true
+            context.startActivity(
+                Intent(context, MainActivity::class.java)
+                    .setAction(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_HOME)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            )
+        }
+    }
+
+    companion object {
+        /** Vive quanto il processo, cioè dall'accensione in poi. */
+        @Volatile private var openedSinceBoot = false
     }
 }

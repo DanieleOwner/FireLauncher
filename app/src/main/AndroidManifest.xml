@@ -63,10 +63,14 @@
             android:name=".HomeWatcherService"
             android:exported="false" />
 
+        <!-- directBootAware: riceve LOCKED_BOOT_COMPLETED, che Fire OS manda molto prima di BOOT_COMPLETED
+             (quest'ultimo arriva alle app esterne quasi due minuti dopo la home Amazon). -->
         <receiver
             android:name=".BootReceiver"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
