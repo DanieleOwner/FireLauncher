@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.layout.layout
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -232,10 +233,8 @@ fun HomeScreen(
                         EmptyWatchlist(Modifier.weight(1f), tabs)
                     }
                 }
-                StillRow(
-                    state = listState,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                ) {
+                Spacer(Modifier.height(8.dp))
+                StillRow(state = listState) {
                     itemsIndexed(trailers, key = { _, t -> t.id }) { i, t ->
                         TrailerThumb(
                             trailer = t,
@@ -461,11 +460,17 @@ private fun Tab(label: String, icon: ImageVector?, selected: Boolean, modifier: 
 @Composable
 private fun StillRow(
     state: androidx.compose.foundation.lazy.LazyListState,
-    contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 6.dp,
+    verticalPadding: androidx.compose.ui.unit.Dp = 8.dp,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
-    val margin = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
+    // La fila "sborda" di BLEED a sinistra e a destra (compensato dal padding interno):
+    // gli elementi restano allineati al resto della pagina, ma quando si ingrandiscono col focus
+    // la cornice bianca non viene tagliata dal bordo della lista.
+    val bleed = 16.dp
+    val contentPadding = PaddingValues(horizontal = horizontalPadding + bleed, vertical = verticalPadding)
+    val margin = with(androidx.compose.ui.platform.LocalDensity.current) { (bleed + 4.dp).toPx() }
     val spec = remember(margin) {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
@@ -481,13 +486,26 @@ private fun StillRow(
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
         LazyRow(
             state = state,
-            modifier = modifier.focusRestorer(),
+            modifier = modifier.bleed(bleed).focusRestorer(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = contentPadding,
             content = content,
         )
     }
 }
+
+/** Allarga l'elemento di [h] a sinistra e a destra oltre lo spazio che gli dà il genitore. */
+private fun Modifier.bleed(h: androidx.compose.ui.unit.Dp): Modifier = this.then(
+    Modifier.layout { measurable, constraints ->
+        val extra = h.roundToPx() * 2
+        val wide = if (constraints.hasBoundedWidth) {
+            constraints.copy(minWidth = constraints.maxWidth + extra, maxWidth = constraints.maxWidth + extra)
+        } else constraints
+        val placeable = measurable.measure(wide)
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+        layout(width, placeable.height) { placeable.place(-extra / 2, 0) }
+    }
+)
 
 @Composable
 private fun TrailerThumb(trailer: Trailer, liked: Boolean, modifier: Modifier, onClick: () -> Unit) {
@@ -573,11 +591,7 @@ private fun AppsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Scorrevole: le app preferite possono essere più di quelle che stanno sullo schermo.
-        StillRow(
-            state = rememberLazyListState(),
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-        ) {
+        StillRow(state = rememberLazyListState(), modifier = Modifier.weight(1f)) {
             itemsIndexed(favorites, key = { _, a -> a.pkg }) { i, app ->
                 AppBanner(app, if (i == 0) Modifier.focusRequester(firstAppFocus) else Modifier) { onLaunch(app) }
             }
