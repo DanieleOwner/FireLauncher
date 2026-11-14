@@ -1,0 +1,24 @@
+# Build
+.gradle/
+.kotlin/
+build/
+app/build/
+app/release/
+*.apk
+*.aab
+
+# Macchina locale
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Segreti e dati del servizio NAS: non vanno mai nel repository
+*.key
+*.jks
+*.keystore
+config/
+nas-agent/config/
+nas-agent/logs/
+nas-agent/www/
+nas-agent/tools/

@@ -1,0 +1,12 @@
+{
+  "port": 8787,
+  "months_back": 24,
+  "bucket_months": 3,
+  "per_bucket": 125,
+  "download_pause_s": 4,
+  "language": "it-IT",
+  "region": "IT",
+  "max_height": 1080,
+  "refresh_hour": 4,
+  "ytdlp_update_days": 3
+}
