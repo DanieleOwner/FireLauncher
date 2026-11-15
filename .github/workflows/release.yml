@@ -71,7 +71,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "FireLauncher-1.0.$VERSION_CODE.apk"
-          gh release create "build-$VERSION_CODE" "FireLauncher-1.0.$VERSION_CODE.apk" \
+          # FireLauncher.apk ha sempre lo stesso nome: .../releases/latest/download/FireLauncher.apk
+          # punta così sempre all'ultima versione (comodo da scrivere in Downloader sulla Fire TV).
+          cp app/build/outputs/apk/release/app-release.apk FireLauncher.apk
+          gh release create "build-$VERSION_CODE" FireLauncher.apk \
             --title "FireLauncher 1.0.$VERSION_CODE" \
             --notes "Build automatica da ${GITHUB_SHA::7}. Sulla Fire TV: Impostazioni → Aggiornamenti."

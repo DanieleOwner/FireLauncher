@@ -17,7 +17,7 @@ YouTube mode  TMDB ────────────────────�
 ## Quick start without a NAS
 
 1. On the Fire TV: Settings → My Fire TV → About, click the device name 7 times, then in Developer options turn on **ADB debugging** and **Apps from Unknown Sources**.
-2. Download the latest `FireLauncher-*.apk` from [Releases](https://github.com/DanieleOwner/FireLauncher/releases) and install it (for example with the Downloader app, or `adb install`).
+2. Install the **Downloader** app from the Amazon Appstore, allow it to install apps (Developer options → Install unknown apps → Downloader), and open this address in it: `https://github.com/DanieleOwner/FireLauncher/releases/latest/download/FireLauncher.apk` (always the latest version). With a computer, `adb install FireLauncher.apk` works too.
 3. Get a free **TMDB API key** (themoviedb.org → Settings → API) and enter it in FireLauncher → Settings → TMDB key, or from a computer:
 
 ```bash
