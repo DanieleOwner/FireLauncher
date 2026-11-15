@@ -2,6 +2,14 @@
 
 An alternative home screen for **Fire TV Stick** (Fire OS 6+), with a carousel of **trailers for recently released movies** that start instantly, a **watchlist** (heart / X), and the weather.
 
+![FireLauncher home screen](docs/screenshots/home.jpg)
+
+| Interface in English | Full-screen trailer | Settings |
+|---|---|---|
+| ![Home screen in English](docs/screenshots/home-english.jpg) | ![Full-screen trailer](docs/screenshots/fullscreen.jpg) | ![Settings](docs/screenshots/settings.jpg) |
+
+<sub>Screenshots from a Fire TV Stick 4K. Movie images and trailer frames © their respective owners, via TMDB and YouTube.</sub>
+
 Two ways to get the trailers, selectable in settings:
 
 - **NAS mode** (instant start): a small service on your **home NAS** (built for Synology, but it runs on any Linux with Python 3.8+) downloads up to 1000 trailers every night and serves them on the local network, so the Fire TV Stick starts them in under a second.
