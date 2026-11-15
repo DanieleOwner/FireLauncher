@@ -16,6 +16,10 @@ import dev.firelauncher.data.Apps
 import dev.firelauncher.data.SettingsStore
 import dev.firelauncher.data.Trailer
 import dev.firelauncher.data.TrailerRepository
+import dev.firelauncher.data.TrailerSource
+import dev.firelauncher.data.Updater
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import dev.firelauncher.data.UiLanguage
 import dev.firelauncher.ui.LocalUiLanguage
 import dev.firelauncher.ui.tr
@@ -88,12 +92,26 @@ class MainActivity : ComponentActivity() {
         settings = SettingsStore(this)
         trailers = TrailerRepository(this)
         player = TrailerPlayer(this)
-        trailers.loadCached(settings.state.value.serverUrl)
+        trailers.loadCached(settings.state.value)
         handleIntent(intent)
 
         setContent {
             val s by settings.state.collectAsState()
+            // Se cambiano sorgente, server, chiave o (in modalità YouTube) il periodo, ricarico l'elenco.
+            val sourceKey = listOf(
+                s.source, s.serverUrl, s.tmdbKey.length,
+                if (s.source == TrailerSource.YOUTUBE) "${s.monthsFrom}-${s.monthsTo}" else "",
+            ).joinToString("|")
+            val firstSourceKey = remember { sourceKey }
+            LaunchedEffect(sourceKey) {
+                if (sourceKey == firstSourceKey) return@LaunchedEffect
+                delay(1500)  // aspetto che finisci di premere sinistra/destra
+                player.stop()
+                selected.value = 0
+                trailers.refresh(settings.state.value, force = true)
+            }
             CompositionLocalProvider(LocalUiLanguage provides s.uiLanguage) { LauncherTheme {
+                val update by updateStatus.collectAsState()
                 val appList by apps.collectAsState()
                 val trailerState by trailers.state.collectAsState()
                 val current by screen.collectAsState()
@@ -130,7 +148,7 @@ class MainActivity : ComponentActivity() {
                             watchlist.value = !watchlist.value
                             selected.value = savedIndex[watchlist.value] ?: 0
                         },
-                        onPref = { t, p -> trailers.setPref(s.serverUrl, t.id, p) },
+                        onPref = { t, p -> trailers.setPref(s, t.id, p) },
                         onLaunch = ::launch,
                         onAllApps = { screen.value = Screen.AllApps },
                         onStore = { Apps.storeIntent(packageManager)?.let(::safeStart) },
@@ -145,12 +163,22 @@ class MainActivity : ComponentActivity() {
                         visibleTrailers = visible.size,
                         homeServiceEnabled = serviceOn,
                         onChange = settings::update,
-                        onRefreshTrailers = { trailers.refresh(s.serverUrl, force = true) },
+                        onRefreshTrailers = { trailers.refresh(s, force = true) },
                         onOpenFireTvSettings = { Apps.settingsIntents().any(::safeStart) },
                         cityStatus = cityMsg,
                         onCitySubmit = ::setCity,
                         apps = appList,
                         onAddFavorite = { screen.value = Screen.PickFavorite },
+                        updateStatus = update?.let { u ->
+                            when (u) {
+                                is UpdateState.Current -> tr("Versione ${BuildConfig.VERSION_NAME}, aggiornata", "Version ${BuildConfig.VERSION_NAME}, up to date")
+                                is UpdateState.Available -> tr("Nuova versione: installa", "New version: install")
+                                is UpdateState.Downloading -> tr("Scarico… ${u.percent}%", "Downloading… ${u.percent}%")
+                                UpdateState.Checking -> tr("Controllo…", "Checking…")
+                                UpdateState.Failed -> tr("Non riuscito, riprova", "Failed, try again")
+                            }
+                        },
+                        onUpdate = ::onUpdatePressed,
                         onBack = { screen.value = Screen.Home },
                     )
                     Screen.PickFavorite -> AllAppsScreen(
@@ -168,7 +196,7 @@ class MainActivity : ComponentActivity() {
                         startIndex = sc.index,
                         player = player,
                         prefs = prefs,
-                        onPref = { t, p -> trailers.setPref(s.serverUrl, t.id, p) },
+                        onPref = { t, p -> trailers.setPref(s, t.id, p) },
                         onIndexChange = { selected.value = it },
                         onExit = { screen.value = Screen.Home },
                     )
@@ -186,10 +214,57 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         HomeOverlay.hide()
         reloadApps()
-        trailers.refresh(settings.state.value.serverUrl)
+        trailers.refresh(settings.state.value)
         homeServiceEnabled.value = isHomeServiceEnabled()
         HomeWatcherService.start(this)
         refreshWeather()
+        checkForUpdate()
+    }
+
+    // ---------------------------------------------------------------- aggiornamenti (solo build GitHub)
+
+    sealed interface UpdateState {
+        data object Checking : UpdateState
+        data object Current : UpdateState
+        data class Available(val release: Updater.Release) : UpdateState
+        data class Downloading(val percent: Int) : UpdateState
+        data object Failed : UpdateState
+    }
+
+    private val updateStatus = MutableStateFlow<UpdateState?>(null)
+    private var updateCheckedAt = 0L
+
+    private fun checkForUpdate(force: Boolean = false) {
+        if (!Updater.enabled) return
+        val now = System.currentTimeMillis()
+        if (!force && now - updateCheckedAt < 24 * 60 * 60 * 1000L) return
+        updateCheckedAt = now
+        updateStatus.value = UpdateState.Checking
+        lifecycleScope.launch {
+            val release = Updater.latest()
+            updateStatus.value = when {
+                release == null -> { updateCheckedAt = 0L; UpdateState.Failed }
+                release.versionCode > BuildConfig.VERSION_CODE -> UpdateState.Available(release)
+                else -> UpdateState.Current
+            }
+        }
+    }
+
+    private fun onUpdatePressed() {
+        val state = updateStatus.value
+        if (state !is UpdateState.Available) {
+            checkForUpdate(force = true)
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                Updater.install(this@MainActivity, state.release) { p -> updateStatus.value = UpdateState.Downloading(p) }
+                updateStatus.value = state
+            } catch (e: Exception) {
+                Log.w("Launcher", "aggiornamento non riuscito", e)
+                updateStatus.value = UpdateState.Failed
+            }
+        }
     }
 
     override fun onPause() {
@@ -203,8 +278,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        if (intent?.action == ACTION_CONFIGURE) {
+            configure(intent)
+            screen.value = Screen.Settings
+            return
+        }
         val fromSettingsIcon = intent?.component?.className?.endsWith(".SettingsAlias") == true
         screen.value = if (fromSettingsIcon) Screen.Settings else Screen.Home
+    }
+
+    /**
+     * Configurazione dal PC via ADB, senza scrivere col telecomando. Esempio:
+     *   adb shell am start -a dev.firelauncher.CONFIGURE -n dev.firelauncher/.MainActivity \
+     *       --es source youtube --es tmdb_key <chiave>
+     * Chiavi: source (nas|youtube), nas_url, tmdb_key.
+     */
+    private fun configure(intent: Intent) {
+        settings.update { s ->
+            var next = s
+            intent.getStringExtra("source")?.let { v ->
+                next = next.copy(source = if (v.equals("nas", true)) TrailerSource.NAS else TrailerSource.YOUTUBE)
+            }
+            intent.getStringExtra("nas_url")?.let { next = next.copy(serverUrl = it) }
+            intent.getStringExtra("tmdb_key")?.let { next = next.copy(tmdbKey = it) }
+            next
+        }
     }
 
     private fun reloadApps() {
@@ -233,4 +331,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isHomeServiceEnabled(): Boolean = HomeWatcherService.hasPermission(this)
+
+    companion object {
+        const val ACTION_CONFIGURE = "dev.firelauncher.CONFIGURE"
+    }
 }

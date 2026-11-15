@@ -1,0 +1,20 @@
+# Dependabot propone gli aggiornamenti delle librerie come pull request.
+# NewPipeExtractor ha un gruppo a sé: quando YouTube cambia esce spesso una versione nuova,
+# e unire la PR (anche dall'app GitHub sul telefono) fa compilare e pubblicare un nuovo APK.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: daily
+    groups:
+      newpipe:
+        patterns: ["com.github.TeamNewPipe:*"]
+      libraries:
+        patterns: ["*"]
+        exclude-patterns: ["com.github.TeamNewPipe:*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

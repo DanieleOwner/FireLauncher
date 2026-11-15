@@ -2,12 +2,31 @@
 
 An alternative home screen for **Fire TV Stick** (Fire OS 6+), with a carousel of **trailers for recently released movies** that start instantly, a **watchlist** (heart / X), and the weather.
 
-Trailers are not streamed from YouTube on demand. A small service on your **home NAS** (built for Synology, but it runs on any Linux with Python 3.8+) downloads them every night and serves them on the local network, so the Fire TV Stick can start them in under a second.
+Two ways to get the trailers, selectable in settings:
+
+- **NAS mode** (instant start): a small service on your **home NAS** (built for Synology, but it runs on any Linux with Python 3.8+) downloads up to 1000 trailers every night and serves them on the local network, so the Fire TV Stick starts them in under a second.
+- **YouTube mode** (no NAS needed): the app builds a list of 50 trailers with TMDB at startup (refreshed daily) and streams them from YouTube with [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor). Starting a trailer takes a couple of seconds.
 
 ```
- TMDB ──► NAS service (Python) ──► /manifest.json + video/audio/images ──► FireLauncher (Fire TV)
- YouTube ─┘  (yt-dlp, nightly)          local network, port 8787             (ExoPlayer, Compose for TV)
+NAS mode      TMDB ──► NAS service (Python) ──► manifest + video/audio ──► FireLauncher (Fire TV)
+              YouTube ─┘  (yt-dlp, nightly)        local network :8787
+
+YouTube mode  TMDB ─────────────────────────────► FireLauncher ◄── YouTube (NewPipeExtractor, streaming)
 ```
+
+## Quick start without a NAS
+
+1. On the Fire TV: Settings → My Fire TV → About, click the device name 7 times, then in Developer options turn on **ADB debugging** and **Apps from Unknown Sources**.
+2. Download the latest `FireLauncher-*.apk` from [Releases](https://github.com/DanieleOwner/FireLauncher/releases) and install it (for example with the Downloader app, or `adb install`).
+3. Get a free **TMDB API key** (themoviedb.org → Settings → API) and enter it in FireLauncher → Settings → TMDB key, or from a computer:
+
+```bash
+adb shell am start -a dev.firelauncher.CONFIGURE -n dev.firelauncher/.MainActivity --es source youtube --es tmdb_key YOUR_KEY
+```
+
+4. Optionally grant the Home-button permissions (see [The Home button on Fire OS](#the-home-button-on-fire-os)).
+
+Updates: the published APK checks GitHub once a day; when a new version is out, Settings → **Updates** downloads and installs it.
 
 ## Features
 
@@ -23,7 +42,7 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 - Title, plot, genres, runtime and rating from TMDB, in Italian by default.
 - Playback in the small preview window or full screen.
 - Instant start: the selected trailer is prepared as soon as it gets focus, and the beginning of neighboring trailers is pre-cached on disk.
-- "Stremio" opens Stremio with a search for that movie.
+- "Stremio" opens Stremio with a search for that movie (the button only appears if Stremio is installed).
 
 **Watchlist**
 
@@ -37,13 +56,15 @@ Trailers are not streamed from YouTube on demand. A small service on your **home
 | OK | play; press OK again to go full screen |
 | ‹ › in full screen | previous / next trailer |
 
-Hearted trailers are **never removed** by the NAS rotation. Hearts and discards are stored on the NAS, so they survive reinstalling the app.
+Hearted trailers are **never removed**: not by the NAS rotation, nor when the YouTube-mode list is rebuilt. In NAS mode hearts and discards are stored on the NAS, so they survive reinstalling the app; in YouTube mode they stay on the Fire TV.
 
 **Settings**, from the home screen or from the "Impostazioni launcher" icon:
+- Trailer source (NAS or YouTube), NAS address, TMDB key (YouTube mode).
 - Trailers on/off, release window in months, how many to show (5–100 or "all"), preview window or full screen, audio in the preview window.
 - Apps on the home screen: add, remove, reorder.
 - City for the weather (default: Terni).
 - Interface language: Italian or English. Movie titles, plots and genres follow it too (from TMDB); when TMDB has no Italian translation, the English one is used instead of the original-language title and an empty plot.
+- Updates (published APK only).
 
 ## Repository layout
 
@@ -53,9 +74,14 @@ app/                          Android app (Kotlin, Jetpack Compose for TV, Media
     MainActivity.kt           screen navigation and wiring
     HomeWatcherService.kt     detects the Amazon home screen and opens FireLauncher instead
     HomeOverlay.kt            cover screen shown while Fire OS makes us wait
-    data/                     installed apps, settings, trailers and preferences, weather
+    data/                     installed apps, settings, trailers and preferences, weather,
+                              YoutubeCatalog (TMDB list for YouTube mode), Updater (GitHub releases)
     player/TrailerPlayer.kt   single ExoPlayer, early preparation and disk cache
+    player/YoutubeResolver.kt YouTube stream URLs via NewPipeExtractor
     ui/                       home, all apps, settings, full-screen player
+.github/
+  workflows/release.yml       builds the APK and publishes it as a GitHub release
+  dependabot.yml              keeps NewPipeExtractor and the other libraries up to date
 nas-agent/
   agent.py                    trailer service (Python 3.8 standard library only)
   start.sh                    starts it in the background (run it at NAS boot)
@@ -119,8 +145,17 @@ HTTP endpoints:
 
 ### 2. App on the Fire TV
 
+Use the published APK (see [Quick start](#quick-start-without-a-nas)) and set Settings → Trailer source → NAS and the NAS address, or build it yourself:
+
 1. On the Fire TV, go to Settings → My Fire TV → About and click the device name 7 times to unlock **Developer options**. Turn on **ADB debugging** and **Apps from Unknown Sources**.
-2. On your computer you need the Android SDK (installing Android Studio is the easiest way). Before building, set your NAS address in `LauncherSettings.DEFAULT_SERVER` ([Settings.kt](app/src/main/java/dev/firelauncher/data/Settings.kt)).
+2. On your computer you need the Android SDK (installing Android Studio is the easiest way). Put your local configuration in `local.properties` (it is git-ignored):
+
+```properties
+firelauncher.nasUrl=http://192.168.1.10:8787
+# optional, for YouTube mode:
+firelauncher.tmdbKey=YOUR_TMDB_KEY
+```
+
 3. Build and install:
 
 ```bash
@@ -137,7 +172,11 @@ adb shell pm grant dev.firelauncher android.permission.READ_LOGS
 adb shell appops set dev.firelauncher SYSTEM_ALERT_WINDOW allow
 ```
 
-The `release` build is signed with your local debug key, which is fine for personal sideloading.
+A local `release` build is signed with your local debug key, which is fine for personal sideloading. It doesn't show the Updates entry: an APK signed with a different key can't update it, so you update by rebuilding.
+
+### Publishing releases from a fork
+
+The [workflow](.github/workflows/release.yml) builds every push to `main` and, if these repository secrets exist, publishes a signed APK as release `build-<number>`: `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`. [Dependabot](.github/dependabot.yml) opens a pull request when NewPipeExtractor is updated (YouTube changes often break older versions): merging it, even from the GitHub mobile app, produces a new release that Fire TVs pick up from Settings → Updates.
 
 ## The Home button on Fire OS
 
@@ -156,7 +195,8 @@ After Home is pressed, however, Android blocks apps from opening for **about 5 s
 ## Limitations and notes
 
 - Some YouTube trailers are region-locked or private: the service tries TMDB's next trailer for that movie, and skips the movie if none works.
-- Downloading videos from YouTube with `yt-dlp` is against YouTube's Terms of Service. This project is meant for personal use, at your own risk.
+- Downloading videos from YouTube with `yt-dlp`, or streaming them outside YouTube's own apps with NewPipeExtractor, is against YouTube's Terms of Service. This project is meant for personal use, at your own risk.
+- In YouTube mode trailers depend on NewPipeExtractor keeping up with YouTube's changes: if they stop playing, update the app.
 - Movie data comes from [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
 - Weather data comes from [Open-Meteo](https://open-meteo.com/).
 

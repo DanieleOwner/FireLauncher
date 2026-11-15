@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission
         android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
@@ -62,6 +63,17 @@
         <service
             android:name=".HomeWatcherService"
             android:exported="false" />
+
+        <!-- Per passare all'installer di Fire OS l'APK scaricato dagli aggiornamenti. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- directBootAware: riceve LOCKED_BOOT_COMPLETED, che Fire OS manda molto prima di BOOT_COMPLETED
              (quest'ultimo arriva alle app esterne quasi due minuti dopo la home Amazon). -->

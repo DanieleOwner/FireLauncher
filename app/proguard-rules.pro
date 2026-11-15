@@ -1,0 +1,12 @@
+# NewPipeExtractor usa riflessione (Rhino, nanojson): non va offuscato.
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.** { *; }
+-keep class com.grack.nanojson.** { *; }
+-dontwarn org.mozilla.javascript.**
+-dontwarn org.mozilla.classfile.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn jdk.dynalink.**
+-dontwarn javax.annotation.**
+-dontwarn org.jsoup.**

@@ -71,6 +71,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import dev.firelauncher.data.AppEntry
+import dev.firelauncher.data.Apps
 import dev.firelauncher.data.LauncherSettings
 import dev.firelauncher.data.PlayMode
 import dev.firelauncher.data.Pref
@@ -118,6 +119,13 @@ fun HomeScreen(
     val firstAppFocus = remember { FocusRequester() }
     var refocus by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
+    val stremioInstalled = remember(apps) { apps.any { it.pkg == Apps.STREMIO } }
+
+    // Modalità YouTube: avviso se un trailer non si riesce a riprodurre.
+    val unavailable by player.unavailable.collectAsState()
+    val msgUnavailable = tr("Trailer non disponibile su YouTube", "Trailer not available on YouTube")
+    val firstUnavailable = remember { unavailable }
+    LaunchedEffect(unavailable) { if (unavailable != firstUnavailable) toast = msgUnavailable }
 
     // Focus iniziale: sul trailer selezionato se ci sono, altrimenti sulla prima app.
     LaunchedEffect(showSlider, favorites.isNotEmpty(), watchlist) {
@@ -235,7 +243,8 @@ fun HomeScreen(
                             onPlay = { activate(index) },
                             onLike = { like(current) },
                             onNope = { nope(current) },
-                            onStremio = { onStremioSearch(current) },
+                            // Il pulsante Stremio c'è solo se l'app è installata.
+                            onStremio = if (stremioInstalled) ({ onStremioSearch(current) }) else null,
                         )
                         VideoWindow(current, player, playing)
                     } else {
@@ -328,7 +337,7 @@ private fun HeroInfo(
     onPlay: () -> Unit,
     onLike: () -> Unit,
     onNope: () -> Unit,
-    onStremio: () -> Unit,
+    onStremio: (() -> Unit)?,
 ) {
     val lang = LocalUiLanguage.current
     Column(modifier) {
@@ -369,7 +378,7 @@ private fun HeroInfo(
                 filled = false, onClick = onLike,
             )
             PillButton(tr("Scarta", "Discard"), Icons.Default.Close, filled = false, onClick = onNope)
-            PillButton("Stremio", Icons.Default.Search, filled = false, onClick = onStremio)
+            onStremio?.let { PillButton("Stremio", Icons.Default.Search, filled = false, onClick = it) }
         }
     }
 }
@@ -573,7 +582,7 @@ private fun EmptyHero(now: Long, settings: LauncherSettings, state: TrailerState
             Spacer(Modifier.height(14.dp))
             val msg = when {
                 state.loading -> tr("Carico i trailer dal NAS…", "Loading trailers from the NAS…")
-                state.error != null -> tr("Trailer non disponibili: NAS non raggiungibile", "Trailers unavailable: can't reach the NAS")
+                state.error != null -> tr("Trailer non disponibili: ", "Trailers unavailable: ") + errorText(state.error).lowercase()
                 state.items.isNotEmpty() -> tr(
                     "Nessun trailer con questi filtri: cambia periodo o lingua nelle impostazioni",
                     "No trailers match these filters: change the period or language in settings",

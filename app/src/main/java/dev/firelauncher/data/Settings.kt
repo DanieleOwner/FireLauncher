@@ -1,6 +1,7 @@
 package dev.firelauncher.data
 
 import android.content.Context
+import dev.firelauncher.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +14,9 @@ enum class TrailerLanguage { ITALIAN_FIRST, ITALIAN_ONLY, ANY }
 /** Lingua dell'interfaccia del launcher (titoli e trame restano quelli di TMDB). */
 enum class UiLanguage { IT, EN }
 
+/** Da dove arrivano i trailer: dal servizio sul NAS oppure direttamente da YouTube (con elenco da TMDB). */
+enum class TrailerSource { NAS, YOUTUBE }
+
 data class LauncherSettings(
     val trailersEnabled: Boolean = true,
     /** Film usciti al massimo questi mesi fa. */
@@ -23,7 +27,10 @@ data class LauncherSettings(
     val trailerCount: Int = 20,
     val playMode: PlayMode = PlayMode.WINDOW,
     val windowAudio: Boolean = true,
+    val source: TrailerSource = if (DEFAULT_SERVER.isBlank()) TrailerSource.YOUTUBE else TrailerSource.NAS,
     val serverUrl: String = DEFAULT_SERVER,
+    /** Chiave TMDB per la modalità YouTube. Non viene mai mostrata né scritta nei log. */
+    val tmdbKey: String = BuildConfig.TMDB_KEY,
     val weatherCity: String = "Terni",
     val weatherLat: Double = 42.5636,
     val weatherLon: Double = 12.6427,
@@ -35,7 +42,10 @@ data class LauncherSettings(
     val hasWeatherPlace: Boolean get() = !weatherLat.isNaN() && !weatherLon.isNaN()
 
     companion object {
-        const val DEFAULT_SERVER = "http://192.168.1.9:8787"
+        /** Da local.properties (firelauncher.nasUrl): vuoto nelle build pubblicate su GitHub. */
+        val DEFAULT_SERVER: String = BuildConfig.DEFAULT_NAS_URL
+        /** Quanti trailer chiedere a TMDB nella modalità YouTube. */
+        const val YOUTUBE_TRAILERS = 50
         const val MAX_MONTHS = 24
         const val MIN_COUNT = 5
         const val MAX_COUNT = 100
@@ -59,6 +69,8 @@ class SettingsStore(context: Context) {
             .putString("playMode", next.playMode.name)
             .putBoolean("windowAudio", next.windowAudio)
             .putString("serverUrl", next.serverUrl)
+            .putString("source", next.source.name)
+            .putString("tmdbKey", next.tmdbKey)
             .putString("weatherCity", next.weatherCity)
             .putString("weatherLat", next.weatherLat.toString())
             .putString("weatherLon", next.weatherLon.toString())
@@ -79,6 +91,9 @@ class SettingsStore(context: Context) {
                 .getOrDefault(d.playMode),
             windowAudio = prefs.getBoolean("windowAudio", d.windowAudio),
             serverUrl = prefs.getString("serverUrl", null) ?: d.serverUrl,
+            source = runCatching { TrailerSource.valueOf(prefs.getString("source", null)!!) }
+                .getOrDefault(d.source),
+            tmdbKey = prefs.getString("tmdbKey", null)?.takeIf { it.isNotBlank() } ?: d.tmdbKey,
             weatherCity = prefs.getString("weatherCity", null) ?: d.weatherCity,
             weatherLat = prefs.getString("weatherLat", null)?.toDoubleOrNull() ?: d.weatherLat,
             weatherLon = prefs.getString("weatherLon", null)?.toDoubleOrNull() ?: d.weatherLon,
@@ -100,7 +115,11 @@ class SettingsStore(context: Context) {
         }
         return copy(
             monthsTo = to, monthsFrom = from, trailerCount = count,
-            serverUrl = serverUrl.trimEnd('/'), favorites = favorites.distinct(),
+            serverUrl = serverUrl.trim().trimEnd('/').let {
+                if (it.isNotEmpty() && !it.startsWith("http")) "http://$it" else it
+            },
+            tmdbKey = tmdbKey.trim(),
+            favorites = favorites.distinct(),
         )
     }
 

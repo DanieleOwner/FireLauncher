@@ -33,7 +33,11 @@ data class Trailer(
     val titleEn: String,
     val overviewEn: String,
     val genresEn: List<String>,
+    /** Solo modalità YouTube: altri trailer dello stesso film, se il primo non è disponibile. */
+    val videoAlternatives: List<String> = emptyList(),
 ) {
+    val isYoutube: Boolean get() = videoUrl.startsWith(YOUTUBE_PREFIX)
+
     fun title(lang: UiLanguage) = if (lang == UiLanguage.EN) titleEn.ifBlank { title } else title
     fun overview(lang: UiLanguage) = if (lang == UiLanguage.EN) overviewEn.ifBlank { overview } else overview
     fun genres(lang: UiLanguage) = if (lang == UiLanguage.EN && genresEn.isNotEmpty()) genresEn else genres
@@ -46,29 +50,39 @@ data class Trailer(
     }
 }
 
+const val YOUTUBE_PREFIX = "yt:"
+
+enum class TrailerError { NAS_UNREACHABLE, NAS_NOT_SET, TMDB_KEY_MISSING, TMDB_UNREACHABLE }
+
 data class TrailerState(
     val items: List<Trailer> = emptyList(),
     val generatedAt: String? = null,
     val loading: Boolean = false,
-    val error: String? = null,
+    val error: TrailerError? = null,
 )
 
 /** Cuore (watchlist) o X (non mi interessa). */
 enum class Pref(val wire: String) { LIKE("like"), NOPE("nope") }
 
 class TrailerRepository(context: Context) {
-    private val cacheFile = File(context.filesDir, "manifest.json")
+    private val filesDir = context.filesDir
+    private fun cacheFile(source: TrailerSource) =
+        File(filesDir, if (source == TrailerSource.NAS) "manifest.json" else "manifest_youtube.json")
     private val prefStore = context.getSharedPreferences("trailer_prefs", Context.MODE_PRIVATE)
 
     private val _prefs = MutableStateFlow(loadLocalPrefs())
-    /** Preferenze correnti per id film. La copia "vera" sta sul NAS (config/prefs.json). */
+    /**
+     * Preferenze correnti per id film. In modalità NAS la copia "vera" sta sul NAS (config/prefs.json);
+     * in modalità YouTube restano solo sulla Fire Stick.
+     */
     val prefs: StateFlow<Map<Int, Pref>> = _prefs.asStateFlow()
 
-    /** Imposta cuore, X o nessuno dei due; lo salva subito qui e lo invia al NAS. */
-    fun setPref(serverUrl: String, id: Int, pref: Pref?) {
+    /** Imposta cuore, X o nessuno dei due; lo salva subito qui e, se c'è il NAS, lo invia anche lì. */
+    fun setPref(s: LauncherSettings, id: Int, pref: Pref?) {
         _prefs.update { if (pref == null) it - id else it + (id to pref) }
-        saveLocalPrefs(_prefs.value, unsynced = loadUnsynced() + id)
-        scope.launch { pushPref(serverUrl, id, pref) }
+        val nas = s.source == TrailerSource.NAS && s.serverUrl.isNotBlank()
+        saveLocalPrefs(_prefs.value, unsynced = if (nas) loadUnsynced() + id else loadUnsynced())
+        if (nas) scope.launch { pushPref(s.serverUrl, id, pref) }
     }
 
     private fun pushPref(serverUrl: String, id: Int, pref: Pref?): Boolean = runCatching {
@@ -119,34 +133,102 @@ class TrailerRepository(context: Context) {
     private val _state = MutableStateFlow(TrailerState())
     val state: StateFlow<TrailerState> = _state.asStateFlow()
     private var lastFetch = 0L
+    private var loadedSource: TrailerSource? = null
 
     /** Carica subito l'ultimo elenco salvato, così la home è pronta all'avvio. */
-    fun loadCached(serverUrl: String) {
+    fun loadCached(s: LauncherSettings) {
+        loadedSource = s.source
         scope.launch {
-            val json = runCatching { cacheFile.readText() }.getOrNull() ?: return@launch
-            runCatching { parse(json, serverUrl) }.onSuccess { (items, generated) ->
+            val json = runCatching { cacheFile(s.source).readText() }.getOrNull() ?: return@launch
+            runCatching { parse(json, s.serverUrl) }.onSuccess { (items, generated) ->
                 _state.update { if (it.items.isEmpty()) it.copy(items = items, generatedAt = generated) else it }
             }
         }
     }
 
-    fun refresh(serverUrl: String, force: Boolean = false) {
+    /** Cambio di sorgente (NAS o YouTube) o di server: riparto dall'elenco salvato di quella sorgente. */
+    fun reset(s: LauncherSettings) {
+        lastFetch = 0L
+        _state.value = TrailerState()
+        loadCached(s)
+        refresh(s, force = true)
+    }
+
+    fun refresh(s: LauncherSettings, force: Boolean = false) {
+        if (loadedSource != s.source) {
+            reset(s)
+            return
+        }
         val now = System.currentTimeMillis()
         if (!force && now - lastFetch < REFRESH_EVERY_MS) return
         lastFetch = now
-        _state.update { it.copy(loading = true) }
+        _state.update { it.copy(loading = true, error = null) }
         scope.launch {
-            try {
-                syncPrefs(serverUrl)
-                val json = download("$serverUrl/manifest.json")
-                val (items, generated) = parse(json, serverUrl)
-                cacheFile.writeText(json)
-                _state.value = TrailerState(items = items, generatedAt = generated)
-            } catch (e: Exception) {
-                Log.w(TAG, "Manifest non disponibile", e)
-                lastFetch = 0L
-                _state.update { it.copy(loading = false, error = "NAS non raggiungibile") }
+            val error = when (s.source) {
+                TrailerSource.NAS -> refreshFromNas(s)
+                TrailerSource.YOUTUBE -> refreshFromTmdb(s, force)
             }
+            if (error != null) {
+                lastFetch = 0L
+                _state.update { it.copy(loading = false, error = error) }
+            }
+        }
+    }
+
+    private fun refreshFromNas(s: LauncherSettings): TrailerError? {
+        if (s.serverUrl.isBlank()) return TrailerError.NAS_NOT_SET
+        return try {
+            syncPrefs(s.serverUrl)
+            val json = download("${s.serverUrl}/manifest.json")
+            val (items, generated) = parse(json, s.serverUrl)
+            cacheFile(TrailerSource.NAS).writeText(json)
+            _state.value = TrailerState(items = items, generatedAt = generated)
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "Manifest non disponibile", e)
+            TrailerError.NAS_UNREACHABLE
+        }
+    }
+
+    /**
+     * Modalità YouTube: l'elenco si rigenera da TMDB una volta al giorno (o se cambia il periodo).
+     * I trailer in watchlist si conservano anche se non sono più tra i 50 più popolari.
+     */
+    private suspend fun refreshFromTmdb(s: LauncherSettings, force: Boolean): TrailerError? {
+        val file = cacheFile(TrailerSource.YOUTUBE)
+        val range = "${s.monthsFrom}-${s.monthsTo}"
+        val cached = runCatching { JSONObject(file.readText()) }.getOrNull()
+        val fresh = cached != null && cached.optString("range") == range &&
+            System.currentTimeMillis() - file.lastModified() < CATALOG_MAX_AGE_MS
+        if (fresh && !force) {
+            val (items, generated) = parse(cached.toString(), "")
+            _state.value = TrailerState(items = items, generatedAt = generated)
+            return null
+        }
+        return try {
+            val built = JSONObject(
+                YoutubeCatalog(s.tmdbKey).build(s.monthsFrom, s.monthsTo, LauncherSettings.YOUTUBE_TRAILERS)
+            )
+            val ids = HashSet<Int>()
+            val items = built.getJSONArray("items")
+            for (i in 0 until items.length()) ids += items.getJSONObject(i).getInt("id")
+            cached?.optJSONArray("items")?.let { old ->
+                for (i in 0 until old.length()) {
+                    val o = old.getJSONObject(i)
+                    if (_prefs.value[o.getInt("id")] == Pref.LIKE && o.getInt("id") !in ids) items.put(o)
+                }
+            }
+            built.put("range", range)
+            val json = built.toString()
+            file.writeText(json)
+            val (list, generated) = parse(json, "")
+            _state.value = TrailerState(items = list, generatedAt = generated)
+            null
+        } catch (e: YoutubeCatalog.MissingKeyException) {
+            TrailerError.TMDB_KEY_MISSING
+        } catch (e: Exception) {
+            Log.w(TAG, "Elenco TMDB non disponibile: ${e.message}")
+            TrailerError.TMDB_UNREACHABLE
         }
     }
 
@@ -167,7 +249,7 @@ class TrailerRepository(context: Context) {
         val arr = root.getJSONArray("items")
         fun abs(path: String?): String? = when {
             path.isNullOrBlank() -> null
-            path.startsWith("http") -> path
+            path.startsWith("http") || path.startsWith(YOUTUBE_PREFIX) -> path
             else -> "$base/${path.trimStart('/')}"
         }
         val items = (0 until arr.length()).mapNotNull { i ->
@@ -192,6 +274,9 @@ class TrailerRepository(context: Context) {
                 titleEn = o.optString("title_en"),
                 overviewEn = o.optString("overview_en"),
                 genresEn = if (genresEn == null) emptyList() else (0 until genresEn.length()).map { genresEn.getString(it) },
+                videoAlternatives = o.optJSONArray("video_alternatives")?.let { a ->
+                    (0 until a.length()).map { a.getString(it) }
+                } ?: emptyList(),
             )
         }
         return items to root.optString("generated").ifBlank { null }
@@ -200,6 +285,7 @@ class TrailerRepository(context: Context) {
     companion object {
         private const val TAG = "Trailers"
         private const val REFRESH_EVERY_MS = 30 * 60 * 1000L
+        private const val CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000L
 
         /**
          * Le preferenze dell'app (sincronizzate col NAS) sono l'unica fonte: niente ripiego sul flag
